@@ -1,0 +1,2 @@
+Hello, BioinfoFlow!
+2 /data/outputs/hello.txt
