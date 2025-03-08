@@ -46,7 +46,8 @@ def cli(debug):
 @click.argument('workflow_file', type=click.Path(exists=True))
 @click.option('--input', '-i', multiple=True, help='Input override in the format key=value')
 @click.option('--dry-run', is_flag=True, help='Validate workflow without executing')
-def run(workflow_file: str, input: tuple, dry_run: bool):
+@click.option('--parallel', '-p', type=int, default=1, help='Maximum number of steps to execute in parallel (default: 1)')
+def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int):
     """Run a workflow from a YAML file."""
     workflow_file = Path(workflow_file)
     
@@ -79,7 +80,9 @@ def run(workflow_file: str, input: tuple, dry_run: bool):
         executor = WorkflowExecutor(workflow, input_overrides)
         
         # Execute workflow
-        success = executor.execute()
+        if parallel > 1:
+            click.echo(f"Running workflow with parallel execution (max {parallel} steps)")
+        success = executor.execute(max_parallel=parallel)
         
         # Get run info
         run_info = executor.get_run_info()

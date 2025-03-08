@@ -183,6 +183,16 @@ You can also specify input paths directly via command line:
 bioinfoflow run my_workflow.yaml --input path=/path/to/your/input/*.fastq.gz
 ```
 
+#### Parallel Execution
+
+BioinfoFlow supports parallel execution of workflow steps. Steps that don't depend on each other can be executed simultaneously:
+
+```bash
+bioinfoflow run my_workflow.yaml --parallel 4
+```
+
+This will execute up to 4 steps in parallel when possible, while still respecting dependencies between steps. For complex workflows with independent branches, this can significantly improve execution time.
+
 ### 4. Check Workflow Status
 
 To list all workflow runs:
