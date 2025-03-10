@@ -47,7 +47,9 @@ def cli(debug):
 @click.option('--input', '-i', multiple=True, help='Input override in the format key=value')
 @click.option('--dry-run', is_flag=True, help='Validate workflow without executing')
 @click.option('--parallel', '-p', type=int, default=1, help='Maximum number of steps to execute in parallel (default: 1)')
-def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int):
+@click.option('--disable-time-limits', is_flag=True, help='Disable time limits for all steps')
+@click.option('--default-time-limit', type=str, default="1h", help='Default time limit for steps that don\'t specify one (default: 1h)')
+def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_time_limits: bool, default_time_limit: str):
     """Run a workflow from a YAML file."""
     workflow_file = Path(workflow_file)
     
@@ -74,6 +76,8 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int):
                 click.echo(f"  {i}. {step_name} (container: {step.container})")
                 click.echo(f"     Command: {step.command}")
                 click.echo(f"     Dependencies: {step.after or 'None'}")
+                if "time_limit" in step.resources:
+                    click.echo(f"     Time limit: {step.resources['time_limit']}")
             return
         
         # Create executor
@@ -82,7 +86,19 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int):
         # Execute workflow
         if parallel > 1:
             click.echo(f"Running workflow with parallel execution (max {parallel} steps)")
-        success = executor.execute(max_parallel=parallel)
+        
+        # Time limit settings
+        enable_time_limits = not disable_time_limits
+        if disable_time_limits:
+            click.echo("Time limits are disabled for all steps")
+        else:
+            click.echo(f"Using default time limit of {default_time_limit} for steps without a specified limit")
+        
+        success = executor.execute(
+            max_parallel=parallel,
+            enable_time_limits=enable_time_limits,
+            default_time_limit=default_time_limit
+        )
         
         # Get run info
         run_info = executor.get_run_info()
@@ -96,6 +112,27 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int):
         
         click.echo(f"Run ID: {run_info['run_id']}")
         click.echo(f"Run directory: {run_info['run_dir']}")
+        
+        # Print detailed step information
+        if 'steps' in run_info and run_info['steps']:
+            click.echo("\nStep details:")
+            for step_name, step_info in run_info['steps'].items():
+                status = step_info.get('status', 'unknown')
+                duration = step_info.get('duration', 'unknown')
+                exit_code = step_info.get('exit_code', 'unknown')
+                
+                if status == 'completed':
+                    click.echo(f"  ✅ {step_name}: Completed in {duration}")
+                elif status == 'terminated_time_limit':
+                    time_limit = step_info.get('time_limit', 'unknown')
+                    click.echo(f"  ⏱️  {step_name}: Terminated due to time limit ({time_limit}) after {duration}")
+                elif status == 'failed':
+                    click.echo(f"  ❌ {step_name}: Failed with exit code {exit_code} after {duration}")
+                elif status == 'error':
+                    error = step_info.get('error', 'unknown error')
+                    click.echo(f"  ❌ {step_name}: Error - {error}")
+                else:
+                    click.echo(f"  ❓ {step_name}: {status}")
         
     except Exception as e:
         logger.error(f"Error running workflow: {str(e)}")

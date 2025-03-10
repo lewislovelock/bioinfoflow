@@ -7,7 +7,7 @@ and paths, supporting the ${...} syntax.
 import re
 import os
 from pathlib import Path
-from typing import Dict, Any, Union, Optional
+from typing import Dict, Any
 from loguru import logger
 
 

@@ -33,7 +33,7 @@ class Step:
             name: Step name
             container: Container image
             command: Command to execute
-            resources: Resource requirements (cpu, memory)
+            resources: Resource requirements (cpu, memory, time_limit)
             after: List of step names this step depends on
         """
         self.name = name
@@ -67,6 +67,15 @@ class Step:
             Memory requirement string (e.g., "1G")
         """
         return self.resources.get("memory", "1G")
+    
+    def get_time_limit(self) -> Optional[str]:
+        """
+        Get the time limit for this step.
+        
+        Returns:
+            Time limit string (e.g., "1h", "30m") or None if not set
+        """
+        return self.resources.get("time_limit")
     
     def resolve_command(self, resolver: PathResolver) -> str:
         """

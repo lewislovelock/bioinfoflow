@@ -13,6 +13,7 @@ class Resources(BaseModel):
     
     cpu: int = Field(1, description="Number of CPU cores", ge=1)
     memory: str = Field("1G", description="Memory requirement")
+    time_limit: Optional[str] = Field(None, description="Time limit for step execution (e.g., 1h, 30m)")
     
     @field_validator('memory')
     @classmethod
@@ -22,6 +23,44 @@ class Resources(BaseModel):
         if not re.match(pattern, v):
             raise ValueError(f"Invalid memory format: {v}. Expected format: <number><unit> (e.g., 1G, 500M)")
         return v
+    
+    @field_validator('time_limit')
+    @classmethod
+    def validate_time_limit_format(cls, v):
+        """Validate time limit format (e.g., 1h, 30m, 2h30m)"""
+        if v is None:
+            return v
+            
+        pattern = r'^(\d+)([hms])(?:(\d+)([ms]))?(?:(\d+)([s]))?$'
+        if not re.match(pattern, v):
+            raise ValueError(f"Invalid time limit format: {v}. Expected format: <number><unit> (e.g., 1h, 30m, 2h30m)")
+        return v
+    
+    def get_time_limit_seconds(self) -> Optional[int]:
+        """
+        Convert time limit to seconds.
+        
+        Returns:
+            Time limit in seconds or None if not set
+        """
+        if not self.time_limit:
+            return None
+            
+        total_seconds = 0
+        
+        # Handle complex time formats like 1h30m15s
+        parts = re.findall(r'(\d+)([hms])', self.time_limit)
+        
+        for value, unit in parts:
+            value = int(value)
+            if unit == 'h':
+                total_seconds += value * 3600
+            elif unit == 'm':
+                total_seconds += value * 60
+            elif unit == 's':
+                total_seconds += value
+        
+        return total_seconds
 
 
 class Step(BaseModel):

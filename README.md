@@ -116,6 +116,7 @@ steps:
     resources:                                # Resource requirements
       cpu: 2
       memory: "4G"
+      time_limit: "1h"                        # Optional time limit (e.g., 1h, 30m, 2h30m, 45s)
     after: []                                 # Dependencies (none for this step)
 
   bwa_mem:
@@ -128,6 +129,7 @@ steps:
     resources:
       cpu: 8
       memory: "16G"
+      time_limit: "2h30m"                     # 2 hours and 30 minutes time limit
     after: [fastqc]                           # Depends on the fastqc step
 ```
 
@@ -192,6 +194,38 @@ bioinfoflow run my_workflow.yaml --parallel 4
 ```
 
 This will execute up to 4 steps in parallel when possible, while still respecting dependencies between steps. For complex workflows with independent branches, this can significantly improve execution time.
+
+#### Time Limits
+
+You can set time limits for each step in your workflow to prevent long-running steps from consuming resources indefinitely:
+
+```yaml
+steps:
+  my_step:
+    container: "ubuntu:latest"
+    command: "my_command"
+    resources:
+      cpu: 1
+      memory: "1G"
+      time_limit: "30m"  # 30 minutes time limit
+```
+
+Time limits can be specified in hours (`h`), minutes (`m`), and seconds (`s`), and can be combined (e.g., `1h30m`, `2h45m30s`). If a step exceeds its time limit, it will be terminated automatically.
+
+You can control time limits via command-line options:
+
+```bash
+# Disable time limits for all steps
+bioinfoflow run my_workflow.yaml --disable-time-limits
+
+# Set a custom default time limit for steps that don't specify one
+bioinfoflow run my_workflow.yaml --default-time-limit 2h30m
+
+# Combine with parallel execution
+bioinfoflow run my_workflow.yaml --parallel 4 --default-time-limit 1h
+```
+
+By default, steps without a specified time limit will use a default limit of 1 hour.
 
 ### 4. Check Workflow Status
 

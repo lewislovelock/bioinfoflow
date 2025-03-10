@@ -1,0 +1,100 @@
+name: time_limit_workflow
+version: "1.0.0"
+description: "A workflow example demonstrating time limit functionality"
+
+# Global configuration
+config:
+  base_dir: "."  # Current working directory
+
+# Input configuration
+inputs:
+  path: "input/*.txt"  # Input path supporting glob patterns
+
+# Workflow steps definition
+steps:
+  # Quick step - creates input data
+  generate_data:
+    container: "ubuntu:latest"
+    command: >
+      echo "This is sample data for analysis" > ${run_dir}/outputs/data.txt
+    resources:
+      cpu: 1
+      memory: "1G"
+      time_limit: "1m"  # 1 minute time limit
+    after: []  # No dependencies
+
+  # Long-running step with a short time limit - will be terminated
+  long_running_step:
+    container: "ubuntu:latest"
+    command: >
+      echo "Starting long-running process..." &&
+      echo "This step will sleep for 30 seconds but has a 10-second time limit" &&
+      sleep 30 &&
+      echo "This message should not appear in the logs" > ${run_dir}/outputs/long_running_output.txt
+    resources:
+      cpu: 1
+      memory: "1G"
+      time_limit: "10s"  # 10 seconds time limit - will be exceeded
+    after: [generate_data]
+
+  # Normal step with adequate time limit
+  normal_step:
+    container: "ubuntu:latest"
+    command: >
+      echo "Starting normal process..." &&
+      echo "This step will sleep for 5 seconds and has a 30-second time limit" &&
+      sleep 5 &&
+      echo "This step completed successfully" > ${run_dir}/outputs/normal_output.txt
+    resources:
+      cpu: 1
+      memory: "1G"
+      time_limit: "30s"  # 30 seconds time limit - will not be exceeded
+    after: [generate_data]
+    
+  # Step without a specified time limit - will use the default
+  default_time_limit_step:
+    container: "ubuntu:latest"
+    command: >
+      echo "This step doesn't specify a time limit" &&
+      echo "It will use the default time limit (1h by default)" &&
+      sleep 3 &&
+      echo "This step completed successfully" > ${run_dir}/outputs/default_time_limit_output.txt
+    resources:
+      cpu: 1
+      memory: "1G"
+      # No time_limit specified - will use default
+    after: [generate_data]
+
+  # Final report step
+  final_report:
+    container: "ubuntu:latest"
+    command: >
+      echo "=== Time Limit Workflow Report ===" > ${run_dir}/outputs/final_report.txt &&
+      echo "Data file contents:" >> ${run_dir}/outputs/final_report.txt &&
+      cat ${run_dir}/outputs/data.txt >> ${run_dir}/outputs/final_report.txt &&
+      echo "" >> ${run_dir}/outputs/final_report.txt &&
+      echo "Normal step output:" >> ${run_dir}/outputs/final_report.txt &&
+      if [ -f ${run_dir}/outputs/normal_output.txt ]; then
+        cat ${run_dir}/outputs/normal_output.txt >> ${run_dir}/outputs/final_report.txt;
+      else
+        echo "Normal step output not found" >> ${run_dir}/outputs/final_report.txt;
+      fi &&
+      echo "" >> ${run_dir}/outputs/final_report.txt &&
+      echo "Default time limit step output:" >> ${run_dir}/outputs/final_report.txt &&
+      if [ -f ${run_dir}/outputs/default_time_limit_output.txt ]; then
+        cat ${run_dir}/outputs/default_time_limit_output.txt >> ${run_dir}/outputs/final_report.txt;
+      else
+        echo "Default time limit step output not found" >> ${run_dir}/outputs/final_report.txt;
+      fi &&
+      echo "" >> ${run_dir}/outputs/final_report.txt &&
+      echo "Long-running step output:" >> ${run_dir}/outputs/final_report.txt &&
+      if [ -f ${run_dir}/outputs/long_running_output.txt ]; then
+        cat ${run_dir}/outputs/long_running_output.txt >> ${run_dir}/outputs/final_report.txt;
+      else
+        echo "Long-running step output not found (likely terminated due to time limit)" >> ${run_dir}/outputs/final_report.txt;
+      fi
+    resources:
+      cpu: 1
+      memory: "1G"
+      time_limit: "1m"  # 1 minute time limit
+    after: [normal_step, default_time_limit_step]  # Depends on normal_step and default_time_limit_step 

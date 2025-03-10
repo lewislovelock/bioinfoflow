@@ -7,7 +7,6 @@ This module handles the execution of workflows, including:
 - Executing steps in dependency order
 - Managing outputs
 """
-import os
 import time
 import concurrent.futures
 from pathlib import Path
@@ -75,19 +74,29 @@ class WorkflowExecutor:
         # Initialize scheduler
         self.scheduler = Scheduler(self.workflow.steps)
         
+        # Time limit configuration
+        self.enable_time_limits = True  # Global switch for time limits
+        self.default_time_limit = "1h"  # Default time limit if not specified
+        
         logger.info(f"Initialized executor for workflow '{workflow.name}' with run_id: {self.run_id}")
     
-    def execute(self, max_parallel: int = 1) -> bool:
+    def execute(self, max_parallel: int = 1, enable_time_limits: bool = True, default_time_limit: str = "1h") -> bool:
         """
         Execute the workflow.
         
         Args:
             max_parallel: Maximum number of steps to execute in parallel (default: 1 for sequential execution)
+            enable_time_limits: Whether to enforce time limits (default: True)
+            default_time_limit: Default time limit for steps that don't specify one (default: 1h)
             
         Returns:
             True if execution was successful, False otherwise
         """
         logger.info(f"Starting execution of workflow '{self.workflow.name}' v{self.workflow.version}")
+        
+        # Update time limit configuration
+        self.enable_time_limits = enable_time_limits
+        self.default_time_limit = default_time_limit
         
         try:
             # Process inputs
@@ -257,25 +266,75 @@ class WorkflowExecutor:
             # Execute container
             start_time = time.time()
             
+            # Apply time limit settings
+            resources = step.resources.copy()
+            
+            if self.enable_time_limits:
+                # If no time limit is specified, use the default
+                if "time_limit" not in resources or not resources["time_limit"]:
+                    resources["time_limit"] = self.default_time_limit
+                    logger.info(f"Using default time limit for step '{step_name}': {self.default_time_limit}")
+            else:
+                # If time limits are disabled, remove any time limit
+                if "time_limit" in resources:
+                    logger.info(f"Time limits disabled, ignoring time limit for step '{step_name}'")
+                    resources.pop("time_limit")
+            
             exit_code = self.container_runner.run_container(
                 image=step.container,
                 command=resolved_command,
-                resources=step.resources,
+                resources=resources,
                 log_file=log_file
             )
             
             end_time = time.time()
             duration = end_time - start_time
             
+            # Record step status in context
+            if "steps" not in self.context:
+                self.context["steps"] = {}
+            if step_name not in self.context["steps"]:
+                self.context["steps"][step_name] = {}
+            
+            self.context["steps"][step_name]["duration"] = f"{duration:.2f}s"
+            self.context["steps"][step_name]["exit_code"] = exit_code
+            
             if exit_code == 0:
                 logger.info(f"Step '{step_name}' completed successfully in {duration:.2f} seconds")
+                self.context["steps"][step_name]["status"] = "completed"
                 return True
+            elif exit_code == 124:
+                # Special handling for time limit termination
+                logger.warning(f"Step '{step_name}' was terminated after {duration:.2f} seconds due to time limit")
+                
+                # Write to log file that the step was terminated due to time limit
+                with open(log_file, 'a') as f:
+                    f.write(f"\n\n### STEP TERMINATED DUE TO TIME LIMIT ###\n")
+                    f.write(f"The step was running for {duration:.2f} seconds when it reached its time limit.\n")
+                
+                # Record time limit termination in context
+                self.context["steps"][step_name]["status"] = "terminated_time_limit"
+                self.context["steps"][step_name]["time_limit"] = resources.get("time_limit", "unknown")
+                
+                # For now, we still consider this a failure, but we could make this configurable
+                return False
             else:
                 logger.error(f"Step '{step_name}' failed with exit code {exit_code}")
+                self.context["steps"][step_name]["status"] = "failed"
                 return False
                 
         except Exception as e:
             logger.error(f"Error executing step '{step_name}': {e}")
+            
+            # Record error in context
+            if "steps" not in self.context:
+                self.context["steps"] = {}
+            if step_name not in self.context["steps"]:
+                self.context["steps"][step_name] = {}
+            
+            self.context["steps"][step_name]["status"] = "error"
+            self.context["steps"][step_name]["error"] = str(e)
+            
             return False
     
     def get_run_info(self) -> Dict[str, Any]:
