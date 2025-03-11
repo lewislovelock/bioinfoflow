@@ -2,4 +2,8 @@ pydantic>=2.10.0,<3.0.0
 PyYAML>=6.0,<7.0
 docker>=7.0.0,<8.0.0
 click>=8.0.0,<9.0.0
-loguru>=0.7.0,<0.8.0 
+loguru>=0.7.0,<0.8.0
+# Database dependencies
+sqlalchemy>=2.0.38,<3.0.0
+psycopg2-binary>=2.9.10,<3.0.0
+alembic>=1.15.1,<2.0.0 

@@ -13,6 +13,7 @@ import concurrent.futures
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set
 from loguru import logger
+import datetime
 
 from bioinfoflow.core.workflow import Workflow
 from bioinfoflow.core.path_resolver import PathResolver
@@ -21,6 +22,14 @@ from bioinfoflow.io.input_manager import InputManager
 from bioinfoflow.io.output_manager import OutputManager
 from bioinfoflow.execution.container import ContainerRunner
 from bioinfoflow.execution.scheduler import Scheduler
+
+# Import database service if available
+try:
+    from bioinfoflow.db.service import DatabaseService
+    has_database = True
+except ImportError:
+    has_database = False
+    logger.warning("Database module not available, database integration disabled")
 
 
 class WorkflowExecutor:
@@ -53,6 +62,33 @@ class WorkflowExecutor:
         
         # Save workflow copy
         workflow.save_workflow_copy(self.dirs["run_dir"])
+        
+        # Database integration
+        self.db_enabled = has_database
+        self.db_workflow_id = None
+        self.db_run_id = None
+        self.db_step_ids = {}
+        
+        # Store workflow in database if available
+        if self.db_enabled:
+            try:
+                # Store workflow definition
+                self.db_workflow_id = DatabaseService.store_workflow(
+                    yaml_path=self.dirs["run_dir"] / "workflow.yaml"
+                )
+                
+                # Create run record
+                self.db_run_id = DatabaseService.create_run(
+                    workflow_id=self.db_workflow_id,
+                    run_id=self.run_id,
+                    run_dir=str(self.dirs["run_dir"]),
+                    inputs=self.cli_inputs
+                )
+                
+                logger.info(f"Database integration enabled for run {self.run_id}")
+            except Exception as e:
+                logger.error(f"Failed to initialize database: {e}")
+                self.db_enabled = False
         
         # Initialize managers
         self.input_manager = InputManager(workflow.inputs, self.dirs["inputs_dir"])
@@ -119,6 +155,57 @@ class WorkflowExecutor:
             self.context["steps"][step_name][key] = value
             
         logger.debug(f"Updated step '{step_name}' status to {status.value}")
+        
+        # Update database if enabled
+        if self.db_enabled and self.db_run_id:
+            try:
+                # If this is the first time the step status is updated, create the step in the database
+                if step_name not in self.db_step_ids:
+                    # Create step record
+                    step_id = DatabaseService.create_step(
+                        db_run_id=self.db_run_id,
+                        step_name=step_name
+                    )
+                    self.db_step_ids[step_name] = step_id
+                
+                # Get additional info
+                start_time = kwargs.get('start_time')
+                end_time = kwargs.get('end_time')
+                log_file = None
+                outputs = None
+                
+                # Get log file if available
+                if 'log_file' in kwargs:
+                    log_file = str(kwargs['log_file'])
+                elif status in [StepStatus.RUNNING, StepStatus.COMPLETED, StepStatus.FAILED]:
+                    # Try to find log file in logs directory
+                    log_file_path = self.dirs["logs_dir"] / f"{step_name}.log"
+                    if log_file_path.exists():
+                        log_file = str(log_file_path)
+                
+                # Get outputs if available
+                if 'outputs' in kwargs:
+                    outputs = kwargs['outputs']
+                elif status == StepStatus.COMPLETED:
+                    # Get all output files for the step
+                    step_outputs = self.output_manager.get_step_outputs(step_name)
+                    if step_outputs:
+                        outputs = {
+                            'files': [str(p) for p in step_outputs]
+                        }
+                
+                # Update step status in database
+                DatabaseService.update_step_status(
+                    step_id=self.db_step_ids[step_name],
+                    status=DatabaseService.map_step_status(status),
+                    log_file=log_file,
+                    outputs=outputs,
+                    start_time=datetime.datetime.fromtimestamp(start_time) if start_time else None,
+                    end_time=datetime.datetime.fromtimestamp(end_time) if end_time else None
+                )
+            except Exception as e:
+                logger.error(f"Failed to update step status in database: {e}")
+                # Continue execution even if database update fails
     
     def execute(self, max_parallel: int = 1, enable_time_limits: bool = True, default_time_limit: str = "1h") -> bool:
         """
@@ -149,17 +236,44 @@ class WorkflowExecutor:
             # Validate inputs
             if not self.input_manager.validate_inputs():
                 logger.error("Input validation failed")
+                
+                # Update database run status if enabled
+                if self.db_enabled:
+                    try:
+                        DatabaseService.update_run_status(self.run_id, "FAILED")
+                    except Exception as e:
+                        logger.error(f"Failed to update run status in database: {e}")
+                        
                 return False
             
+            result = False
             if max_parallel <= 1:
                 # Sequential execution (original behavior)
-                return self._execute_sequential()
+                result = self._execute_sequential()
             else:
                 # Parallel execution
-                return self._execute_parallel(max_parallel)
+                result = self._execute_parallel(max_parallel)
+            
+            # Update database run status if enabled
+            if self.db_enabled:
+                try:
+                    status = "COMPLETED" if result else "FAILED"
+                    DatabaseService.update_run_status(self.run_id, status)
+                except Exception as e:
+                    logger.error(f"Failed to update run status in database: {e}")
+            
+            return result
             
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
+            
+            # Update database run status if enabled
+            if self.db_enabled:
+                try:
+                    DatabaseService.update_run_status(self.run_id, "FAILED")
+                except Exception as db_e:
+                    logger.error(f"Failed to update run status in database: {db_e}")
+                    
             return False
     
     def _execute_sequential(self) -> bool:
@@ -180,6 +294,14 @@ class WorkflowExecutor:
                 logger.error(f"Step '{step_name}' failed, aborting workflow")
                 # Save step status information
                 self._save_step_status()
+                
+                # Update database run status if enabled
+                if self.db_enabled:
+                    try:
+                        DatabaseService.update_run_status(self.run_id, "FAILED")
+                    except Exception as e:
+                        logger.error(f"Failed to update run status in database: {e}")
+                        
                 return False
         
         # Clean up temporary files
@@ -188,6 +310,13 @@ class WorkflowExecutor:
         # Save step status information
         self._save_step_status()
         
+        # Update database run status if enabled
+        if self.db_enabled:
+            try:
+                DatabaseService.update_run_status(self.run_id, "COMPLETED")
+            except Exception as e:
+                logger.error(f"Failed to update run status in database: {e}")
+                
         logger.success(f"Workflow execution completed successfully")
         return True
     
@@ -219,6 +348,14 @@ class WorkflowExecutor:
                     logger.error("No steps are ready to execute, but workflow is not complete")
                     # Save step status information
                     self._save_step_status()
+                    
+                    # Update database run status if enabled
+                    if self.db_enabled:
+                        try:
+                            DatabaseService.update_run_status(self.run_id, "FAILED")
+                        except Exception as e:
+                            logger.error(f"Failed to update run status in database: {e}")
+                            
                     return False
                 
                 logger.info(f"Ready steps for parallel execution: {', '.join(ready_steps)}")
@@ -243,12 +380,28 @@ class WorkflowExecutor:
                             failed_steps.add(step_name)
                             # Save step status information
                             self._save_step_status()
+                            
+                            # Update database run status if enabled
+                            if self.db_enabled:
+                                try:
+                                    DatabaseService.update_run_status(self.run_id, "FAILED")
+                                except Exception as e:
+                                    logger.error(f"Failed to update run status in database: {e}")
+                                    
                             return False
                     except Exception as e:
                         logger.error(f"Exception executing step '{step_name}': {e}")
                         failed_steps.add(step_name)
                         # Save step status information
                         self._save_step_status()
+                        
+                        # Update database run status if enabled
+                        if self.db_enabled:
+                            try:
+                                DatabaseService.update_run_status(self.run_id, "FAILED")
+                            except Exception as db_e:
+                                logger.error(f"Failed to update run status in database: {db_e}")
+                                
                         return False
         
         # Clean up temporary files
@@ -257,6 +410,13 @@ class WorkflowExecutor:
         # Save step status information
         self._save_step_status()
         
+        # Update database run status if enabled
+        if self.db_enabled:
+            try:
+                DatabaseService.update_run_status(self.run_id, "COMPLETED")
+            except Exception as e:
+                logger.error(f"Failed to update run status in database: {e}")
+                
         logger.success(f"Workflow execution completed successfully")
         return True
     

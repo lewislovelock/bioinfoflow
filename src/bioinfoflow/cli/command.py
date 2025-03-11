@@ -16,6 +16,17 @@ from bioinfoflow.core.workflow import Workflow
 from bioinfoflow.core.models import StepStatus
 from bioinfoflow.execution.executor import WorkflowExecutor
 
+# Import database modules if available
+try:
+    from bioinfoflow.db.config import db_config
+    from bioinfoflow.db.service import DatabaseService
+    from bioinfoflow.db.repositories.workflow_repository import WorkflowRepository
+    from bioinfoflow.db.repositories.run_repository import RunRepository
+    has_database = True
+except ImportError:
+    has_database = False
+    logger.warning("Database module not available, database functionality disabled")
+
 
 # Configure loguru logger
 logger.remove()  # Remove default handler
@@ -326,6 +337,184 @@ def status(run_id: str, base_dir: Optional[str]):
                 click.echo(f"  Path: {output_file} ({size} bytes)")
     else:
         click.echo("No outputs found")
+
+
+@cli.group()
+def db():
+    """Database management commands."""
+    if not has_database:
+        click.echo("Database functionality is not available.")
+        sys.exit(1)
+
+
+@db.command()
+def init():
+    """Initialize database schema."""
+    try:
+        # Create database tables
+        db_config.create_tables()
+        click.echo("Database initialized successfully.")
+    except Exception as e:
+        click.echo(f"Error initializing database: {e}", err=True)
+        sys.exit(1)
+
+
+@db.command()
+def list_workflows():
+    """List workflows stored in the database."""
+    try:
+        session = db_config.get_session()
+        
+        try:
+            workflow_repo = WorkflowRepository(session)
+            workflows = workflow_repo.get_all()
+            
+            if not workflows:
+                click.echo("No workflows found in the database.")
+                return
+            
+            click.echo("\nWorkflows in database:")
+            for workflow in workflows:
+                click.echo(f"  ID: {workflow.id}, Name: {workflow.name}, Version: {workflow.version}")
+                if workflow.description:
+                    click.echo(f"    Description: {workflow.description}")
+                click.echo(f"    Created: {workflow.created_at}")
+                
+                # Get run count
+                run_repo = RunRepository(session)
+                runs = run_repo.get_by_workflow_id(workflow.id)
+                click.echo(f"    Runs: {len(runs)}")
+                
+                click.echo("")
+                
+        finally:
+            session.close()
+            
+    except Exception as e:
+        click.echo(f"Error listing workflows: {e}", err=True)
+        sys.exit(1)
+
+
+@db.command()
+@click.argument('workflow_id', type=int)
+def list_runs(workflow_id: int):
+    """List runs for a workflow."""
+    try:
+        session = db_config.get_session()
+        
+        try:
+            # Get workflow
+            workflow_repo = WorkflowRepository(session)
+            workflow = workflow_repo.get_by_id(workflow_id)
+            
+            if not workflow:
+                click.echo(f"Workflow with ID {workflow_id} not found.")
+                return
+            
+            click.echo(f"\nRuns for workflow '{workflow.name}' v{workflow.version}:")
+            
+            # Get runs
+            run_repo = RunRepository(session)
+            runs = run_repo.get_by_workflow_id(workflow_id)
+            
+            if not runs:
+                click.echo("  No runs found.")
+                return
+            
+            for run in runs:
+                click.echo(f"  Run ID: {run.run_id}")
+                click.echo(f"    Status: {run.status}")
+                click.echo(f"    Started: {run.start_time}")
+                if run.end_time:
+                    click.echo(f"    Ended: {run.end_time}")
+                    duration = run.end_time - run.start_time
+                    click.echo(f"    Duration: {duration}")
+                click.echo(f"    Run directory: {run.run_dir}")
+                
+                # Get step count
+                from bioinfoflow.db.repositories.step_repository import StepRepository
+                step_repo = StepRepository(session)
+                steps = step_repo.get_by_run_id(run.id)
+                click.echo(f"    Steps: {len(steps)}")
+                
+                click.echo("")
+                
+        finally:
+            session.close()
+            
+    except Exception as e:
+        click.echo(f"Error listing runs: {e}", err=True)
+        sys.exit(1)
+
+
+@db.command()
+@click.argument('run_id')
+def list_steps(run_id: str):
+    """List steps for a run."""
+    try:
+        session = db_config.get_session()
+        
+        try:
+            # Get run
+            run_repo = RunRepository(session)
+            run = run_repo.get_by_run_id(run_id)
+            
+            if not run:
+                click.echo(f"Run with ID {run_id} not found.")
+                return
+            
+            # Get workflow
+            workflow_repo = WorkflowRepository(session)
+            workflow = workflow_repo.get_by_id(run.workflow_id)
+            
+            click.echo(f"\nSteps for run '{run_id}' of workflow '{workflow.name}' v{workflow.version}:")
+            
+            # Get steps
+            from bioinfoflow.db.repositories.step_repository import StepRepository
+            step_repo = StepRepository(session)
+            steps = step_repo.get_by_run_id(run.id)
+            
+            if not steps:
+                click.echo("  No steps found.")
+                return
+            
+            for step in steps:
+                if step.status == "COMPLETED":
+                    status_icon = "✅"
+                elif step.status == "RUNNING":
+                    status_icon = "🔄"
+                elif step.status == "FAILED":
+                    status_icon = "❌"
+                elif step.status == "TERMINATED_TIME_LIMIT":
+                    status_icon = "⏱️"
+                elif step.status == "PENDING":
+                    status_icon = "⏳"
+                elif step.status == "SKIPPED":
+                    status_icon = "⏭️"
+                else:
+                    status_icon = "❓"
+                    
+                click.echo(f"  {status_icon} {step.step_name}: {step.status}")
+                
+                if step.start_time:
+                    click.echo(f"    Started: {step.start_time}")
+                if step.end_time:
+                    click.echo(f"    Ended: {step.end_time}")
+                    duration = step.end_time - step.start_time
+                    click.echo(f"    Duration: {duration}")
+                if step.log_file:
+                    click.echo(f"    Log file: {step.log_file}")
+                if step.outputs:
+                    click.echo(f"    Outputs: {len(step.outputs.get('files', []))} files")
+                
+                click.echo("")
+                
+        finally:
+            session.close()
+            
+    except Exception as e:
+        click.echo(f"Error listing steps: {e}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
