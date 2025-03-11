@@ -1,1 +1,0 @@
-/Users/lewisliu/Dev/mygit/bioinfoflow/examples/input/empty.txt

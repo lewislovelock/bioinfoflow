@@ -13,6 +13,7 @@ from loguru import logger
 
 from bioinfoflow.core.config import Config
 from bioinfoflow.core.workflow import Workflow
+from bioinfoflow.core.models import StepStatus
 from bioinfoflow.execution.executor import WorkflowExecutor
 
 
@@ -121,16 +122,22 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
                 duration = step_info.get('duration', 'unknown')
                 exit_code = step_info.get('exit_code', 'unknown')
                 
-                if status == 'completed':
+                if status == StepStatus.COMPLETED.value:
                     click.echo(f"  ✅ {step_name}: Completed in {duration}")
-                elif status == 'terminated_time_limit':
+                elif status == StepStatus.TERMINATED_TIME_LIMIT.value:
                     time_limit = step_info.get('time_limit', 'unknown')
                     click.echo(f"  ⏱️  {step_name}: Terminated due to time limit ({time_limit}) after {duration}")
-                elif status == 'failed':
+                elif status == StepStatus.FAILED.value:
                     click.echo(f"  ❌ {step_name}: Failed with exit code {exit_code} after {duration}")
-                elif status == 'error':
+                elif status == StepStatus.ERROR.value:
                     error = step_info.get('error', 'unknown error')
                     click.echo(f"  ❌ {step_name}: Error - {error}")
+                elif status == StepStatus.RUNNING.value:
+                    click.echo(f"  🔄 {step_name}: Running...")
+                elif status == StepStatus.PENDING.value:
+                    click.echo(f"  ⏳ {step_name}: Pending")
+                elif status == StepStatus.SKIPPED.value:
+                    click.echo(f"  ⏭️  {step_name}: Skipped")
                 else:
                     click.echo(f"  ❓ {step_name}: {status}")
         
@@ -242,17 +249,63 @@ def status(run_id: str, base_dir: Optional[str]):
     workflow_file = run_dir / "workflow.yaml"
     if workflow_file.exists():
         click.echo(f"Workflow file: {workflow_file}")
+        
+        # Load workflow metadata
+        try:
+            workflow = Workflow(workflow_file)
+            click.echo(f"Workflow: {workflow.name} v{workflow.version}")
+            click.echo(f"Description: {workflow.description}")
+        except Exception as e:
+            click.echo(f"Failed to load workflow metadata: {e}")
     else:
         click.echo("Workflow file not found")
     
     # Check status file
     status_file = run_dir / "status.txt"
+    workflow_status = "Unknown"
     if status_file.exists():
         with open(status_file, 'r') as f:
-            status = f.read().strip()
-        click.echo(f"Status: {status}")
+            workflow_status = f.read().strip()
+        click.echo(f"Status: {workflow_status}")
     else:
         click.echo("Status: Unknown")
+    
+    # Check step status
+    steps_info = {}
+    step_status_file = run_dir / "step_status.json"
+    if step_status_file.exists():
+        import json
+        try:
+            with open(step_status_file, 'r') as f:
+                steps_info = json.load(f)
+            
+            if steps_info:
+                click.echo("\nStep details:")
+                for step_name, step_info in steps_info.items():
+                    status = step_info.get('status', 'unknown')
+                    duration = step_info.get('duration', 'unknown')
+                    exit_code = step_info.get('exit_code', 'unknown')
+                    
+                    if status == StepStatus.COMPLETED.value:
+                        click.echo(f"  ✅ {step_name}: Completed in {duration}")
+                    elif status == StepStatus.TERMINATED_TIME_LIMIT.value:
+                        time_limit = step_info.get('time_limit', 'unknown')
+                        click.echo(f"  ⏱️  {step_name}: Terminated due to time limit ({time_limit}) after {duration}")
+                    elif status == StepStatus.FAILED.value:
+                        click.echo(f"  ❌ {step_name}: Failed with exit code {exit_code} after {duration}")
+                    elif status == StepStatus.ERROR.value:
+                        error = step_info.get('error', 'unknown error')
+                        click.echo(f"  ❌ {step_name}: Error - {error}")
+                    elif status == StepStatus.RUNNING.value:
+                        click.echo(f"  🔄 {step_name}: Running...")
+                    elif status == StepStatus.PENDING.value:
+                        click.echo(f"  ⏳ {step_name}: Pending")
+                    elif status == StepStatus.SKIPPED.value:
+                        click.echo(f"  ⏭️  {step_name}: Skipped")
+                    else:
+                        click.echo(f"  ❓ {step_name}: {status}")
+        except Exception as e:
+            click.echo(f"Failed to load step status: {e}")
     
     # Check logs
     logs_dir = run_dir / "logs"

@@ -22,6 +22,7 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "5m"  # 5 minutes time limit
     after: []  # No dependencies
 
   # These three steps can run in parallel after generate_data
@@ -31,6 +32,7 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "2m"  # 2 minutes time limit
     after: [generate_data]  # Depends on generate_data
 
   calculate_sum:
@@ -40,6 +42,7 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "2m"  # 2 minutes time limit
     after: [generate_data]  # Depends on generate_data
 
   sort_fruits:
@@ -48,6 +51,7 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "2m"  # 2 minutes time limit
     after: [generate_data]  # Depends on generate_data
 
   # These two steps depend on the previous parallel steps
@@ -57,6 +61,7 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "1m"  # 1 minute time limit
     after: [count_words]  # Depends on count_words
 
   reverse_sort:
@@ -65,6 +70,7 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "1m"  # 1 minute time limit
     after: [sort_fruits]  # Depends on sort_fruits
 
   # Final step - combines results from all branches
@@ -83,4 +89,5 @@ steps:
     resources:
       cpu: 1
       memory: "1G"
+      time_limit: "3m"  # 3 minutes time limit
     after: [count_chars, calculate_sum, reverse_sort]  # Depends on multiple steps 

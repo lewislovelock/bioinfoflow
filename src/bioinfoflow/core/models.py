@@ -5,8 +5,26 @@ This module defines the Pydantic models used throughout the application.
 """
 
 import re
+from enum import Enum
 from typing import Dict, List, Optional, Any, Set
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class StepStatus(str, Enum):
+    """Status of a workflow step."""
+    
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TERMINATED_TIME_LIMIT = "terminated_time_limit"
+    SKIPPED = "skipped"
+    ERROR = "error"
+    
+    def __str__(self) -> str:
+        """String representation of the status."""
+        return self.value
+
 
 class Resources(BaseModel):
     """Model for step resource requirements"""

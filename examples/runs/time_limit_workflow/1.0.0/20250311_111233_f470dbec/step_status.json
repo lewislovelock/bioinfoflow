@@ -1,0 +1,50 @@
+{
+  "generate_data": {
+    "status": "completed",
+    "start_time": 1741662753.199237,
+    "end_time": 1741662755.171511,
+    "duration": "1.97s",
+    "exit_code": 0,
+    "outputs": {
+      "files": []
+    }
+  },
+  "long_running_step": {
+    "status": "terminated_time_limit",
+    "start_time": 1741662755.172432,
+    "end_time": 1741662765.321357,
+    "duration": "10.15s",
+    "exit_code": 124,
+    "outputs": {
+      "files": []
+    },
+    "time_limit": "10s"
+  },
+  "normal_step": {
+    "status": "completed",
+    "start_time": 1741662755.175201,
+    "end_time": 1741662760.488957,
+    "duration": "5.31s",
+    "exit_code": 0,
+    "outputs": {
+      "files": []
+    }
+  },
+  "default_time_limit_step": {
+    "status": "completed",
+    "start_time": 1741662760.4892879,
+    "end_time": 1741662763.861595,
+    "duration": "3.37s",
+    "exit_code": 0,
+    "outputs": {
+      "files": []
+    }
+  },
+  "final_report": {
+    "status": "pending",
+    "start_time": null,
+    "end_time": null,
+    "duration": null,
+    "exit_code": null
+  }
+}

@@ -1,1 +1,0 @@
-25 /data/outputs/word_count.txt

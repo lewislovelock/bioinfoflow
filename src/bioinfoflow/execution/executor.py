@@ -7,6 +7,7 @@ This module handles the execution of workflows, including:
 - Executing steps in dependency order
 - Managing outputs
 """
+import os
 import time
 import concurrent.futures
 from pathlib import Path
@@ -15,6 +16,7 @@ from loguru import logger
 
 from bioinfoflow.core.workflow import Workflow
 from bioinfoflow.core.path_resolver import PathResolver
+from bioinfoflow.core.models import StepStatus
 from bioinfoflow.io.input_manager import InputManager
 from bioinfoflow.io.output_manager import OutputManager
 from bioinfoflow.execution.container import ContainerRunner
@@ -78,7 +80,45 @@ class WorkflowExecutor:
         self.enable_time_limits = True  # Global switch for time limits
         self.default_time_limit = "1h"  # Default time limit if not specified
         
+        # Initialize step status tracking
+        self._init_step_status()
+        
+        # Load existing step status information if available
+        self._load_step_status()
+        
         logger.info(f"Initialized executor for workflow '{workflow.name}' with run_id: {self.run_id}")
+    
+    def _init_step_status(self):
+        """Initialize step status for all steps."""
+        self.context["steps"] = {}
+        for step_name in self.workflow.steps:
+            self.context["steps"][step_name] = {
+                "status": StepStatus.PENDING.value,
+                "start_time": None,
+                "end_time": None,
+                "duration": None,
+                "exit_code": None
+            }
+    
+    def update_step_status(self, step_name: str, status: StepStatus, **kwargs):
+        """
+        Update the status of a step.
+        
+        Args:
+            step_name: Name of the step
+            status: New status
+            **kwargs: Additional status information
+        """
+        if step_name not in self.context["steps"]:
+            self.context["steps"][step_name] = {}
+        
+        self.context["steps"][step_name]["status"] = status.value
+        
+        # Update additional information
+        for key, value in kwargs.items():
+            self.context["steps"][step_name][key] = value
+            
+        logger.debug(f"Updated step '{step_name}' status to {status.value}")
     
     def execute(self, max_parallel: int = 1, enable_time_limits: bool = True, default_time_limit: str = "1h") -> bool:
         """
@@ -138,13 +178,15 @@ class WorkflowExecutor:
             success = self.execute_step(step_name)
             if not success:
                 logger.error(f"Step '{step_name}' failed, aborting workflow")
+                # Save step status information
+                self._save_step_status()
                 return False
-            
-            # Update context with step outputs
-            self._update_step_context(step_name)
         
         # Clean up temporary files
         self.output_manager.cleanup_temp_files()
+        
+        # Save step status information
+        self._save_step_status()
         
         logger.info(f"Workflow execution completed successfully")
         return True
@@ -175,6 +217,8 @@ class WorkflowExecutor:
                     # No steps are ready, but workflow is not complete
                     # This could happen if there's a circular dependency
                     logger.error("No steps are ready to execute, but workflow is not complete")
+                    # Save step status information
+                    self._save_step_status()
                     return False
                 
                 logger.info(f"Ready steps for parallel execution: {', '.join(ready_steps)}")
@@ -194,19 +238,24 @@ class WorkflowExecutor:
                         if success:
                             logger.info(f"Step '{step_name}' completed successfully")
                             completed_steps.add(step_name)
-                            # Update context with step outputs
-                            self._update_step_context(step_name)
                         else:
                             logger.error(f"Step '{step_name}' failed")
                             failed_steps.add(step_name)
+                            # Save step status information
+                            self._save_step_status()
                             return False
                     except Exception as e:
                         logger.error(f"Exception executing step '{step_name}': {e}")
                         failed_steps.add(step_name)
+                        # Save step status information
+                        self._save_step_status()
                         return False
         
         # Clean up temporary files
         self.output_manager.cleanup_temp_files()
+        
+        # Save step status information
+        self._save_step_status()
         
         logger.info(f"Workflow execution completed successfully")
         return True
@@ -219,10 +268,13 @@ class WorkflowExecutor:
             step_name: Name of the completed step
         """
         step_outputs = self.output_manager.get_step_outputs(step_name)
-        self.context["steps"][step_name] = {
-            "outputs": {
-                "files": [str(p) for p in step_outputs]
-            }
+        
+        # Don't overwrite status information - just add outputs
+        if step_name not in self.context["steps"]:
+            self.context["steps"][step_name] = {}
+            
+        self.context["steps"][step_name]["outputs"] = {
+            "files": [str(p) for p in step_outputs]
         }
         
         # Update path resolver context
@@ -241,6 +293,14 @@ class WorkflowExecutor:
         step = self.workflow.steps[step_name]
         
         logger.info(f"Executing step '{step_name}'")
+        
+        # Update step status to running
+        start_time = time.time()
+        self.update_step_status(
+            step_name, 
+            StepStatus.RUNNING, 
+            start_time=start_time
+        )
         
         try:
             # Prepare step-specific context
@@ -261,10 +321,15 @@ class WorkflowExecutor:
             # Ensure container image is available
             if not self.container_runner.ensure_image_available(step.container):
                 logger.error(f"Failed to ensure container image: {step.container}")
+                end_time = time.time()
+                self.update_step_status(
+                    step_name, 
+                    StepStatus.ERROR, 
+                    end_time=end_time,
+                    duration=f"{end_time - start_time:.2f}s",
+                    error="Failed to ensure container image"
+                )
                 return False
-            
-            # Execute container
-            start_time = time.time()
             
             # Apply time limit settings
             resources = step.resources.copy()
@@ -280,6 +345,7 @@ class WorkflowExecutor:
                     logger.info(f"Time limits disabled, ignoring time limit for step '{step_name}'")
                     resources.pop("time_limit")
             
+            # Execute container
             exit_code = self.container_runner.run_container(
                 image=step.container,
                 command=resolved_command,
@@ -287,21 +353,23 @@ class WorkflowExecutor:
                 log_file=log_file
             )
             
+            # Update step outputs in context
+            self._update_step_context(step_name)
+            
+            # Calculate duration
             end_time = time.time()
             duration = end_time - start_time
-            
-            # Record step status in context
-            if "steps" not in self.context:
-                self.context["steps"] = {}
-            if step_name not in self.context["steps"]:
-                self.context["steps"][step_name] = {}
-            
-            self.context["steps"][step_name]["duration"] = f"{duration:.2f}s"
-            self.context["steps"][step_name]["exit_code"] = exit_code
+            duration_str = f"{duration:.2f}s"
             
             if exit_code == 0:
                 logger.info(f"Step '{step_name}' completed successfully in {duration:.2f} seconds")
-                self.context["steps"][step_name]["status"] = "completed"
+                self.update_step_status(
+                    step_name, 
+                    StepStatus.COMPLETED, 
+                    end_time=end_time,
+                    duration=duration_str,
+                    exit_code=exit_code
+                )
                 return True
             elif exit_code == 124:
                 # Special handling for time limit termination
@@ -313,27 +381,40 @@ class WorkflowExecutor:
                     f.write(f"The step was running for {duration:.2f} seconds when it reached its time limit.\n")
                 
                 # Record time limit termination in context
-                self.context["steps"][step_name]["status"] = "terminated_time_limit"
-                self.context["steps"][step_name]["time_limit"] = resources.get("time_limit", "unknown")
+                self.update_step_status(
+                    step_name, 
+                    StepStatus.TERMINATED_TIME_LIMIT, 
+                    end_time=end_time,
+                    duration=duration_str,
+                    exit_code=exit_code,
+                    time_limit=resources.get("time_limit", "unknown")
+                )
                 
                 # For now, we still consider this a failure, but we could make this configurable
                 return False
             else:
                 logger.error(f"Step '{step_name}' failed with exit code {exit_code}")
-                self.context["steps"][step_name]["status"] = "failed"
+                self.update_step_status(
+                    step_name, 
+                    StepStatus.FAILED, 
+                    end_time=end_time,
+                    duration=duration_str,
+                    exit_code=exit_code
+                )
                 return False
                 
         except Exception as e:
             logger.error(f"Error executing step '{step_name}': {e}")
             
             # Record error in context
-            if "steps" not in self.context:
-                self.context["steps"] = {}
-            if step_name not in self.context["steps"]:
-                self.context["steps"][step_name] = {}
-            
-            self.context["steps"][step_name]["status"] = "error"
-            self.context["steps"][step_name]["error"] = str(e)
+            end_time = time.time()
+            self.update_step_status(
+                step_name, 
+                StepStatus.ERROR, 
+                end_time=end_time,
+                duration=f"{end_time - start_time:.2f}s",
+                error=str(e)
+            )
             
             return False
     
@@ -344,13 +425,104 @@ class WorkflowExecutor:
         Returns:
             Dictionary with run information
         """
+        # First save latest step status to ensure it's up to date
+        self._save_step_status()
+        
+        # Calculate overall workflow status
+        overall_status = "completed"
+        for step_info in self.context["steps"].values():
+            if step_info["status"] in [
+                StepStatus.FAILED.value, 
+                StepStatus.ERROR.value, 
+                StepStatus.TERMINATED_TIME_LIMIT.value
+            ]:
+                overall_status = "failed"
+                break
+            elif step_info["status"] in [StepStatus.RUNNING.value, StepStatus.PENDING.value]:
+                overall_status = "running"
+                break
+        
         return {
             "workflow": self.workflow.name,
             "version": self.workflow.version,
             "run_id": self.run_id,
             "start_time": self.context.get("start_time", ""),
             "end_time": self.context.get("end_time", ""),
-            "status": self.context.get("status", "unknown"),
+            "status": overall_status,
             "steps": self.context.get("steps", {}),
             "run_dir": str(self.dirs["run_dir"])
-        } 
+        }
+    
+    def _save_step_status(self):
+        """Save step status information to a JSON file."""
+        import json
+        
+        run_dir = self.dirs["run_dir"]
+        step_status_file = run_dir / "step_status.json"
+        
+        try:
+            # Create a clean copy of the steps data
+            steps_data = {}
+            for step_name, step_info in self.context["steps"].items():
+                steps_data[step_name] = {k: v for k, v in step_info.items()}
+                
+                # Remove large or complex objects that don't need to be saved
+                if "outputs" in steps_data[step_name]:
+                    # Keep only the file paths, not the full objects
+                    file_paths = steps_data[step_name]["outputs"].get("files", [])
+                    steps_data[step_name]["outputs"] = {"files": file_paths}
+            
+            # Write to file
+            with open(step_status_file, 'w') as f:
+                json.dump(steps_data, f, indent=2)
+                
+            logger.debug(f"Saved step status information to {step_status_file}")
+            
+            # Also save overall workflow status
+            status_file = run_dir / "status.txt"
+            overall_status = "completed"
+            
+            # Check if any step failed
+            for step_info in steps_data.values():
+                if step_info["status"] in [
+                    StepStatus.FAILED.value, 
+                    StepStatus.ERROR.value, 
+                    StepStatus.TERMINATED_TIME_LIMIT.value
+                ]:
+                    overall_status = "failed"
+                    break
+            
+            with open(status_file, 'w') as f:
+                f.write(overall_status)
+                
+            logger.debug(f"Saved workflow status ({overall_status}) to {status_file}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save step status information: {e}")
+    
+    def _load_step_status(self):
+        """Load step status information from a JSON file."""
+        import json
+        
+        run_dir = self.dirs["run_dir"]
+        step_status_file = run_dir / "step_status.json"
+        
+        if not step_status_file.exists():
+            return
+        
+        try:
+            with open(step_status_file, 'r') as f:
+                steps_data = json.load(f)
+            
+            # Update context with loaded data
+            for step_name, step_info in steps_data.items():
+                if step_name not in self.context["steps"]:
+                    self.context["steps"][step_name] = {}
+                
+                for k, v in step_info.items():
+                    self.context["steps"][step_name][k] = v
+            
+            logger.debug(f"Loaded step status information from {step_status_file}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load step status information: {e}") 
