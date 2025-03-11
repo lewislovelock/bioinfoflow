@@ -188,7 +188,7 @@ class WorkflowExecutor:
         # Save step status information
         self._save_step_status()
         
-        logger.info(f"Workflow execution completed successfully")
+        logger.success(f"Workflow execution completed successfully")
         return True
     
     def _execute_parallel(self, max_parallel: int) -> bool:
@@ -236,7 +236,7 @@ class WorkflowExecutor:
                     try:
                         success = future.result()
                         if success:
-                            logger.info(f"Step '{step_name}' completed successfully")
+                            logger.success(f"Step '{step_name}' completed successfully")
                             completed_steps.add(step_name)
                         else:
                             logger.error(f"Step '{step_name}' failed")
@@ -257,7 +257,7 @@ class WorkflowExecutor:
         # Save step status information
         self._save_step_status()
         
-        logger.info(f"Workflow execution completed successfully")
+        logger.success(f"Workflow execution completed successfully")
         return True
     
     def _update_step_context(self, step_name: str) -> None:
@@ -362,7 +362,7 @@ class WorkflowExecutor:
             duration_str = f"{duration:.2f}s"
             
             if exit_code == 0:
-                logger.info(f"Step '{step_name}' completed successfully in {duration:.2f} seconds")
+                logger.success(f"Step '{step_name}' completed successfully in {duration:.2f} seconds")
                 self.update_step_status(
                     step_name, 
                     StepStatus.COMPLETED, 
