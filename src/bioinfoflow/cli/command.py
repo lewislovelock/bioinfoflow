@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.tree import Tree
+from rich.text import Text
 
 from bioinfoflow.core.config import Config
 from bioinfoflow.core.workflow import Workflow
@@ -40,6 +41,9 @@ logger.add(
     level="INFO",
     colorize=True,
 )
+
+# Create a global console instance for rich output
+console = Console()
 
 
 @click.group()
@@ -81,8 +85,6 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
         workflow = Workflow(workflow_file)
         
         if dry_run:
-            console = Console()
-            
             # Create workflow info panel
             workflow_info = Panel(
                 f"[bold cyan]Name:[/] {workflow.name}\n"
@@ -135,14 +137,14 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
         
         # Execute workflow
         if parallel > 1:
-            click.echo(f"Running workflow with parallel execution (max {parallel} steps)")
+            console.print(f"Running workflow with [bold cyan]parallel execution[/] (max {parallel} steps)")
         
         # Time limit settings
         enable_time_limits = not disable_time_limits
         if disable_time_limits:
-            click.echo("Time limits are disabled for all steps")
+            console.print("[yellow]Time limits are disabled[/] for all steps")
         else:
-            click.echo(f"Using default time limit of {default_time_limit} for steps without a specified limit")
+            console.print(f"Using default time limit of [bold]{default_time_limit}[/] for steps without a specified limit")
         
         success = executor.execute(
             max_parallel=parallel,
@@ -154,45 +156,63 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
         run_info = executor.get_run_info()
         
         # Print summary
-        click.echo("")
+        console.print("")
         if success:
-            click.echo("Workflow run completed successfully")
+            console.print("[bold green]Workflow run completed successfully[/]")
         else:
-            click.echo("Workflow run completed with errors")
+            console.print("[bold red]Workflow run completed with errors[/]")
         
-        click.echo(f"Run ID: {run_info['run_id']}")
-        click.echo(f"Run directory: {run_info['run_dir']}")
+        console.print(f"[bold]Run ID:[/] {run_info['run_id']}")
+        console.print(f"[bold]Run directory:[/] {run_info['run_dir']}")
         
         # Print detailed step information
         if 'steps' in run_info and run_info['steps']:
-            click.echo("\nStep details:")
+            console.print("\n[bold]Step details:[/]")
+            
+            # Create a table for step details
+            step_table = Table(show_header=False, box=None)
+            step_table.add_column("Status", style="bold")
+            step_table.add_column("Details")
+            
             for step_name, step_info in run_info['steps'].items():
                 status = step_info.get('status', 'unknown')
                 duration = step_info.get('duration', 'unknown')
                 exit_code = step_info.get('exit_code', 'unknown')
                 
                 if status == StepStatus.COMPLETED.value:
-                    click.echo(f"  ✅ {step_name}: Completed in {duration}")
+                    status_text = "✅"
+                    details = f"[cyan]{step_name}:[/] Completed in [green]{duration}[/]"
                 elif status == StepStatus.TERMINATED_TIME_LIMIT.value:
+                    status_text = "⏱️"
                     time_limit = step_info.get('time_limit', 'unknown')
-                    click.echo(f"  ⏱️  {step_name}: Terminated due to time limit ({time_limit}) after {duration}")
+                    details = f"[cyan]{step_name}:[/] Terminated due to time limit ([yellow]{time_limit}[/]) after {duration}"
                 elif status == StepStatus.FAILED.value:
-                    click.echo(f"  ❌ {step_name}: Failed with exit code {exit_code} after {duration}")
+                    status_text = "❌"
+                    details = f"[cyan]{step_name}:[/] Failed with exit code [red]{exit_code}[/] after {duration}"
                 elif status == StepStatus.ERROR.value:
+                    status_text = "❌"
                     error = step_info.get('error', 'unknown error')
-                    click.echo(f"  ❌ {step_name}: Error - {error}")
+                    details = f"[cyan]{step_name}:[/] Error - [red]{error}[/]"
                 elif status == StepStatus.RUNNING.value:
-                    click.echo(f"  🔄 {step_name}: Running...")
+                    status_text = "🔄"
+                    details = f"[cyan]{step_name}:[/] [yellow]Running...[/]"
                 elif status == StepStatus.PENDING.value:
-                    click.echo(f"  ⏳ {step_name}: Pending")
+                    status_text = "⏳"
+                    details = f"[cyan]{step_name}:[/] [dim]Pending[/]"
                 elif status == StepStatus.SKIPPED.value:
-                    click.echo(f"  ⏭️  {step_name}: Skipped")
+                    status_text = "⏭️"
+                    details = f"[cyan]{step_name}:[/] [dim]Skipped[/]"
                 else:
-                    click.echo(f"  ❓ {step_name}: {status}")
+                    status_text = "❓"
+                    details = f"[cyan]{step_name}:[/] {status}"
+                
+                step_table.add_row(status_text, details)
+            
+            console.print(step_table)
         
     except Exception as e:
         logger.error(f"Error running workflow: {str(e)}")
-        click.echo(f"Error: {str(e)}", err=True)
+        console.print(f"[bold red]Error:[/] {str(e)}", err=True)
         sys.exit(1)
 
 
@@ -204,58 +224,72 @@ def list(base_dir: Optional[str]):
     runs_dir = Path(config.runs_dir)
     
     if not runs_dir.exists():
-        click.echo(f"No runs directory found at {runs_dir}")
+        console.print(f"[yellow]No runs directory found at[/] {runs_dir}")
         return
     
-    click.echo(f"Workflow runs in {runs_dir}:")
+    console.print(f"[bold]Workflow runs in[/] {runs_dir}:")
     
     # Find all workflow directories
     workflow_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
     
     if not workflow_dirs:
-        click.echo("No workflow runs found")
+        console.print("[yellow]No workflow runs found[/]")
         return
     
     # Print workflow runs
     for workflow_dir in sorted(workflow_dirs):
-        click.echo(f"\n{workflow_dir.name}:")
+        console.print(f"\n[bold cyan]{workflow_dir.name}:[/]")
         
         # Find all version directories
         version_dirs = [d for d in workflow_dir.iterdir() if d.is_dir()]
         
         for version_dir in sorted(version_dirs):
-            click.echo(f"  Version {version_dir.name}:")
+            console.print(f"  [bold]Version {version_dir.name}:[/]")
             
             # Find all run directories
             run_dirs = [d for d in version_dir.iterdir() if d.is_dir()]
             
-            for run_dir in sorted(run_dirs, key=lambda d: d.stat().st_mtime, reverse=True):
-                # Get run timestamp from directory name
-                run_id = run_dir.name
-                ymd = run_id.split('_')[0]
-                hms = run_id.split('_')[1]
+            # Create a table for runs
+            if run_dirs:
+                run_table = Table(show_header=True, box=None, pad_edge=False)
+                run_table.add_column("Run ID", style="cyan")
+                run_table.add_column("Timestamp", style="green")
+                run_table.add_column("Status", style="bold")
+                run_table.add_column("Path", style="dim")
                 
-                # Format timestamp
-                try:
-                    year = ymd[0:4]
-                    month = ymd[4:6]
-                    day = ymd[6:8]
-                    hour = hms[0:2]
-                    minute = hms[2:4]
-                    second = hms[4:6]
-                    formatted_time = f"{year}-{month}-{day} {hour}:{minute}:{second}"
-                except:
-                    formatted_time = "Unknown"
+                for run_dir in sorted(run_dirs, key=lambda d: d.stat().st_mtime, reverse=True):
+                    # Get run timestamp from directory name
+                    run_id = run_dir.name
+                    ymd = run_id.split('_')[0]
+                    hms = run_id.split('_')[1]
+                    
+                    # Format timestamp
+                    try:
+                        year = ymd[0:4]
+                        month = ymd[4:6]
+                        day = ymd[6:8]
+                        hour = hms[0:2]
+                        minute = hms[2:4]
+                        second = hms[4:6]
+                        formatted_time = f"{year}-{month}-{day} {hour}:{minute}:{second}"
+                    except:
+                        formatted_time = "Unknown"
+                    
+                    # Check if workflow completed successfully
+                    status_file = run_dir / "status.txt"
+                    if status_file.exists():
+                        with open(status_file, 'r') as f:
+                            status = f.read().strip()
+                            status_style = "green" if status == "completed" else "red"
+                            status_text = Text(status, style=status_style)
+                    else:
+                        status_text = Text("Unknown", style="yellow")
+                    
+                    run_table.add_row(run_id, formatted_time, status_text, str(run_dir))
                 
-                # Check if workflow completed successfully, not functional yet
-                status_file = run_dir / "status.txt"
-                if status_file.exists():
-                    with open(status_file, 'r') as f:
-                        status = f.read().strip()
-                else:
-                    status = "Unknown"
-                
-                click.echo(f"    {run_id} ({formatted_time}) - {status} - Path: {run_dir}")
+                console.print(run_table)
+            else:
+                console.print("    [dim]No runs found[/]")
 
 
 @cli.command()
@@ -288,26 +322,29 @@ def status(run_id: str, base_dir: Optional[str]):
             break
     
     if not run_dir:
-        click.echo(f"Run ID {run_id} not found")
+        console.print(f"[bold red]Run ID {run_id} not found[/]")
         return
     
-    click.echo(f"Run ID: {run_dir.name}")
-    click.echo(f"Run directory: {run_dir}")
+    # Create a panel for run information
+    run_info = [
+        f"[bold cyan]Run ID:[/] {run_dir.name}",
+        f"[bold cyan]Run directory:[/] {run_dir}"
+    ]
     
     # Check workflow file
     workflow_file = run_dir / "workflow.yaml"
     if workflow_file.exists():
-        click.echo(f"Workflow file: {workflow_file}")
+        run_info.append(f"[bold cyan]Workflow file:[/] {workflow_file}")
         
         # Load workflow metadata
         try:
             workflow = Workflow(workflow_file)
-            click.echo(f"Workflow: {workflow.name} v{workflow.version}")
-            click.echo(f"Description: {workflow.description}")
+            run_info.append(f"[bold cyan]Workflow:[/] {workflow.name} v{workflow.version}")
+            run_info.append(f"[bold cyan]Description:[/] {workflow.description}")
         except Exception as e:
-            click.echo(f"Failed to load workflow metadata: {e}")
+            run_info.append(f"[bold red]Failed to load workflow metadata:[/] {e}")
     else:
-        click.echo("Workflow file not found")
+        run_info.append("[yellow]Workflow file not found[/]")
     
     # Check status file
     status_file = run_dir / "status.txt"
@@ -315,9 +352,13 @@ def status(run_id: str, base_dir: Optional[str]):
     if status_file.exists():
         with open(status_file, 'r') as f:
             workflow_status = f.read().strip()
-        click.echo(f"Status: {workflow_status}")
+        status_style = "green" if workflow_status == "completed" else "red"
+        run_info.append(f"[bold cyan]Status:[/] [{status_style}]{workflow_status}[/]")
     else:
-        click.echo("Status: Unknown")
+        run_info.append("[bold cyan]Status:[/] [yellow]Unknown[/]")
+    
+    # Display run information panel
+    console.print(Panel("\n".join(run_info), title=f"[bold]Run Status: {run_id}[/]", border_style="blue"))
     
     # Check step status
     steps_info = {}
@@ -329,59 +370,117 @@ def status(run_id: str, base_dir: Optional[str]):
                 steps_info = json.load(f)
             
             if steps_info:
-                click.echo("\nStep details:")
+                # Create a table for step details
+                step_table = Table(title="Step Details", show_header=True)
+                step_table.add_column("Status", width=3)
+                step_table.add_column("Step", style="cyan")
+                step_table.add_column("Status", style="bold")
+                step_table.add_column("Duration", style="green")
+                step_table.add_column("Details", style="dim")
+                
                 for step_name, step_info in steps_info.items():
                     status = step_info.get('status', 'unknown')
                     duration = step_info.get('duration', 'unknown')
                     exit_code = step_info.get('exit_code', 'unknown')
                     
                     if status == StepStatus.COMPLETED.value:
-                        click.echo(f"  ✅ {step_name}: Completed in {duration}")
+                        status_icon = "✅"
+                        status_text = Text("Completed", style="green")
+                        details = ""
                     elif status == StepStatus.TERMINATED_TIME_LIMIT.value:
+                        status_icon = "⏱️"
+                        status_text = Text("Terminated", style="yellow")
                         time_limit = step_info.get('time_limit', 'unknown')
-                        click.echo(f"  ⏱️  {step_name}: Terminated due to time limit ({time_limit}) after {duration}")
+                        details = f"Time limit: {time_limit}"
                     elif status == StepStatus.FAILED.value:
-                        click.echo(f"  ❌ {step_name}: Failed with exit code {exit_code} after {duration}")
+                        status_icon = "❌"
+                        status_text = Text("Failed", style="red")
+                        details = f"Exit code: {exit_code}"
                     elif status == StepStatus.ERROR.value:
+                        status_icon = "❌"
+                        status_text = Text("Error", style="red")
                         error = step_info.get('error', 'unknown error')
-                        click.echo(f"  ❌ {step_name}: Error - {error}")
+                        details = error
                     elif status == StepStatus.RUNNING.value:
-                        click.echo(f"  🔄 {step_name}: Running...")
+                        status_icon = "🔄"
+                        status_text = Text("Running", style="yellow")
+                        details = ""
                     elif status == StepStatus.PENDING.value:
-                        click.echo(f"  ⏳ {step_name}: Pending")
+                        status_icon = "⏳"
+                        status_text = Text("Pending", style="dim")
+                        details = ""
                     elif status == StepStatus.SKIPPED.value:
-                        click.echo(f"  ⏭️  {step_name}: Skipped")
+                        status_icon = "⏭️"
+                        status_text = Text("Skipped", style="dim")
+                        details = ""
                     else:
-                        click.echo(f"  ❓ {step_name}: {status}")
+                        status_icon = "❓"
+                        status_text = Text(status, style="yellow")
+                        details = ""
+                    
+                    step_table.add_row(status_icon, step_name, status_text, duration, details)
+                
+                console.print(step_table)
         except Exception as e:
-            click.echo(f"Failed to load step status: {e}")
+            console.print(f"[bold red]Failed to load step status:[/] {e}")
     
     # Check logs
     logs_dir = run_dir / "logs"
     if logs_dir.exists():
-        click.echo("\nLogs:")
-        for log_file in sorted(logs_dir.glob("*.log")):
-            click.echo(f"  Path: {log_file}")
+        log_files = list(sorted(logs_dir.glob("*.log")))
+        if log_files:
+            log_table = Table(title="Log Files", show_header=True)
+            log_table.add_column("File", style="cyan")
+            log_table.add_column("Size", style="green")
+            
+            for log_file in log_files:
+                size = log_file.stat().st_size
+                size_str = f"{size} bytes"
+                if size > 1024:
+                    size_str = f"{size/1024:.1f} KB"
+                if size > 1024*1024:
+                    size_str = f"{size/(1024*1024):.1f} MB"
+                
+                log_table.add_row(str(log_file), size_str)
+            
+            console.print(log_table)
+        else:
+            console.print("[yellow]No log files found[/]")
     else:
-        click.echo("No logs found")
+        console.print("[yellow]No logs directory found[/]")
     
     # Check outputs
     outputs_dir = run_dir / "outputs"
     if outputs_dir.exists():
-        click.echo("\nOutputs:")
-        for output_file in sorted(outputs_dir.glob("*")):
-            if output_file.is_file():
-                size = output_file.stat().st_size
-                click.echo(f"  Path: {output_file} ({size} bytes)")
+        output_files = list(sorted(outputs_dir.glob("*")))
+        if output_files:
+            output_table = Table(title="Output Files", show_header=True)
+            output_table.add_column("File", style="cyan")
+            output_table.add_column("Size", style="green")
+            
+            for output_file in output_files:
+                if output_file.is_file():
+                    size = output_file.stat().st_size
+                    size_str = f"{size} bytes"
+                    if size > 1024:
+                        size_str = f"{size/1024:.1f} KB"
+                    if size > 1024*1024:
+                        size_str = f"{size/(1024*1024):.1f} MB"
+                    
+                    output_table.add_row(str(output_file), size_str)
+            
+            console.print(output_table)
+        else:
+            console.print("[yellow]No output files found[/]")
     else:
-        click.echo("No outputs found")
+        console.print("[yellow]No outputs directory found[/]")
 
 
 @cli.group()
 def db():
     """Database management commands."""
     if not has_database:
-        click.echo("Database functionality is not available.")
+        console.print("[bold red]Database functionality is not available.[/]")
         sys.exit(1)
 
 
@@ -391,9 +490,9 @@ def init():
     try:
         # Create database tables
         db_config.create_tables()
-        click.echo("Database initialized successfully.")
+        console.print("[bold green]Database initialized successfully.[/]")
     except Exception as e:
-        click.echo(f"Error initializing database: {e}", err=True)
+        console.print(f"[bold red]Error initializing database:[/] {e}", err=True)
         sys.exit(1)
 
 
@@ -408,28 +507,39 @@ def list_workflows():
             workflows = workflow_repo.get_all()
             
             if not workflows:
-                click.echo("No workflows found in the database.")
+                console.print("[yellow]No workflows found in the database.[/]")
                 return
             
-            click.echo("\nWorkflows in database:")
+            # Create a table for workflows
+            workflow_table = Table(title="Workflows in Database", show_header=True)
+            workflow_table.add_column("ID", style="dim")
+            workflow_table.add_column("Name", style="cyan")
+            workflow_table.add_column("Version", style="green")
+            workflow_table.add_column("Description", style="yellow")
+            workflow_table.add_column("Created", style="dim")
+            workflow_table.add_column("Runs", style="magenta")
+            
             for workflow in workflows:
-                click.echo(f"  ID: {workflow.id}, Name: {workflow.name}, Version: {workflow.version}")
-                if workflow.description:
-                    click.echo(f"    Description: {workflow.description}")
-                click.echo(f"    Created: {workflow.created_at}")
-                
                 # Get run count
                 run_repo = RunRepository(session)
                 runs = run_repo.get_by_workflow_id(workflow.id)
-                click.echo(f"    Runs: {len(runs)}")
                 
-                click.echo("")
+                workflow_table.add_row(
+                    str(workflow.id),
+                    workflow.name,
+                    workflow.version,
+                    workflow.description or "",
+                    str(workflow.created_at),
+                    str(len(runs))
+                )
+            
+            console.print(workflow_table)
                 
         finally:
             session.close()
             
     except Exception as e:
-        click.echo(f"Error listing workflows: {e}", err=True)
+        console.print(f"[bold red]Error listing workflows:[/] {e}", err=True)
         sys.exit(1)
 
 
@@ -446,42 +556,59 @@ def list_runs(workflow_id: int):
             workflow = workflow_repo.get_by_id(workflow_id)
             
             if not workflow:
-                click.echo(f"Workflow with ID {workflow_id} not found.")
+                console.print(f"[bold red]Workflow with ID {workflow_id} not found.[/]")
                 return
             
-            click.echo(f"\nRuns for workflow '{workflow.name}' v{workflow.version}:")
+            console.print(f"\n[bold]Runs for workflow[/] [cyan]'{workflow.name}'[/] [green]v{workflow.version}[/]:")
             
             # Get runs
             run_repo = RunRepository(session)
             runs = run_repo.get_by_workflow_id(workflow_id)
             
             if not runs:
-                click.echo("  No runs found.")
+                console.print("  [yellow]No runs found.[/]")
                 return
             
+            # Create a table for runs
+            run_table = Table(show_header=True)
+            run_table.add_column("Run ID", style="cyan")
+            run_table.add_column("Status", style="bold")
+            run_table.add_column("Started", style="green")
+            run_table.add_column("Ended", style="green")
+            run_table.add_column("Duration", style="yellow")
+            run_table.add_column("Steps", style="magenta")
+            
             for run in runs:
-                click.echo(f"  Run ID: {run.run_id}")
-                click.echo(f"    Status: {run.status}")
-                click.echo(f"    Started: {run.start_time}")
-                if run.end_time:
-                    click.echo(f"    Ended: {run.end_time}")
-                    duration = run.end_time - run.start_time
-                    click.echo(f"    Duration: {duration}")
-                click.echo(f"    Run directory: {run.run_dir}")
-                
                 # Get step count
                 from bioinfoflow.db.repositories.step_repository import StepRepository
                 step_repo = StepRepository(session)
                 steps = step_repo.get_by_run_id(run.id)
-                click.echo(f"    Steps: {len(steps)}")
                 
-                click.echo("")
+                # Format status with color
+                status_style = "green" if run.status == "COMPLETED" else "red" if run.status == "FAILED" else "yellow"
+                status_text = Text(run.status, style=status_style)
+                
+                # Calculate duration if run has ended
+                duration = ""
+                if run.end_time:
+                    duration = str(run.end_time - run.start_time)
+                
+                run_table.add_row(
+                    run.run_id,
+                    status_text,
+                    str(run.start_time),
+                    str(run.end_time) if run.end_time else "",
+                    duration,
+                    str(len(steps))
+                )
+            
+            console.print(run_table)
                 
         finally:
             session.close()
             
     except Exception as e:
-        click.echo(f"Error listing runs: {e}", err=True)
+        console.print(f"[bold red]Error listing runs:[/] {e}", err=True)
         sys.exit(1)
 
 
@@ -498,14 +625,14 @@ def list_steps(run_id: str):
             run = run_repo.get_by_run_id(run_id)
             
             if not run:
-                click.echo(f"Run with ID {run_id} not found.")
+                console.print(f"[bold red]Run with ID {run_id} not found.[/]")
                 return
             
             # Get workflow
             workflow_repo = WorkflowRepository(session)
             workflow = workflow_repo.get_by_id(run.workflow_id)
             
-            click.echo(f"\nSteps for run '{run_id}' of workflow '{workflow.name}' v{workflow.version}:")
+            console.print(f"\n[bold]Steps for run[/] [cyan]'{run_id}'[/] of workflow [green]'{workflow.name}'[/] v{workflow.version}:")
             
             # Get steps
             from bioinfoflow.db.repositories.step_repository import StepRepository
@@ -513,45 +640,73 @@ def list_steps(run_id: str):
             steps = step_repo.get_by_run_id(run.id)
             
             if not steps:
-                click.echo("  No steps found.")
+                console.print("  [yellow]No steps found.[/]")
                 return
             
+            # Create a table for steps
+            step_table = Table(show_header=True)
+            step_table.add_column("Status", width=3)
+            step_table.add_column("Step Name", style="cyan")
+            step_table.add_column("Status", style="bold")
+            step_table.add_column("Started", style="green")
+            step_table.add_column("Ended", style="green")
+            step_table.add_column("Duration", style="yellow")
+            
             for step in steps:
+                # Determine status icon and style
                 if step.status == "COMPLETED":
                     status_icon = "✅"
+                    status_text = Text(step.status, style="green")
                 elif step.status == "RUNNING":
                     status_icon = "🔄"
+                    status_text = Text(step.status, style="yellow")
                 elif step.status == "FAILED":
                     status_icon = "❌"
+                    status_text = Text(step.status, style="red")
                 elif step.status == "TERMINATED_TIME_LIMIT":
                     status_icon = "⏱️"
+                    status_text = Text(step.status, style="yellow")
                 elif step.status == "PENDING":
                     status_icon = "⏳"
+                    status_text = Text(step.status, style="dim")
                 elif step.status == "SKIPPED":
                     status_icon = "⏭️"
+                    status_text = Text(step.status, style="dim")
                 else:
                     status_icon = "❓"
-                    
-                click.echo(f"  {status_icon} {step.step_name}: {step.status}")
+                    status_text = Text(step.status, style="yellow")
                 
-                if step.start_time:
-                    click.echo(f"    Started: {step.start_time}")
-                if step.end_time:
-                    click.echo(f"    Ended: {step.end_time}")
-                    duration = step.end_time - step.start_time
-                    click.echo(f"    Duration: {duration}")
+                # Calculate duration if step has ended
+                duration = ""
+                if step.start_time and step.end_time:
+                    duration = str(step.end_time - step.start_time)
+                
+                step_table.add_row(
+                    status_icon,
+                    step.step_name,
+                    status_text,
+                    str(step.start_time) if step.start_time else "",
+                    str(step.end_time) if step.end_time else "",
+                    duration
+                )
+            
+            console.print(step_table)
+            
+            # Show additional details for steps with outputs
+            for step in steps:
+                if step.outputs and 'files' in step.outputs:
+                    console.print(f"\n[bold]Outputs for step[/] [cyan]{step.step_name}[/]:")
+                    for file_path in step.outputs['files']:
+                        console.print(f"  {file_path}")
+                
                 if step.log_file:
-                    click.echo(f"    Log file: {step.log_file}")
-                if step.outputs:
-                    click.echo(f"    Outputs: {len(step.outputs.get('files', []))} files")
-                
-                click.echo("")
+                    console.print(f"[bold]Log file for step[/] [cyan]{step.step_name}[/]: {step.log_file}")
                 
         finally:
             session.close()
             
     except Exception as e:
-        click.echo(f"Error listing steps: {e}", err=True)
+        console.print(f"[bold red]Error listing steps:[/] {e}", err=True)
         sys.exit(1)
 
 
