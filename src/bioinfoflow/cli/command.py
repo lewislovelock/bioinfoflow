@@ -33,14 +33,8 @@ except ImportError:
     logger.warning("Database module not available, database functionality disabled")
 
 
-# Configure loguru logger
-logger.remove()  # Remove default handler
-logger.add(
-    sys.stderr,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-    level="INFO",
-    colorize=True,
-)
+# Configure loguru logger - remove default handler
+logger.remove()
 
 # Create a global console instance for rich output
 console = Console()
@@ -50,9 +44,9 @@ console = Console()
 @click.option('--debug', is_flag=True, help='Enable debug logging')
 def cli(debug):
     """BioinfoFlow: A workflow engine for bioinformatics."""
+    # Configure logging based on debug flag
     if debug:
         # Set log level to DEBUG if debug flag is provided
-        logger.remove()
         logger.add(
             sys.stderr,
             format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
@@ -60,6 +54,25 @@ def cli(debug):
             colorize=True,
         )
         logger.debug("Debug logging enabled")
+    else:
+        # In normal mode, only log warnings and errors to stderr
+        logger.add(
+            sys.stderr,
+            format="<level>{level: <8}</level> | <level>{message}</level>",
+            level="WARNING",
+            colorize=True,
+        )
+        
+        # Also log to file for all levels
+        log_dir = Path.home() / ".bioinfoflow" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "bioinfoflow.log"
+        logger.add(
+            str(log_file),
+            rotation="10 MB",
+            retention="1 week",
+            level="INFO",
+        )
 
 
 @cli.command()
