@@ -5,8 +5,10 @@ This module provides the CLI commands for the BioinfoFlow workflow system.
 """
 
 import sys
+import time
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
+from threading import Thread, Event
 
 import click
 from loguru import logger
@@ -15,6 +17,8 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.tree import Tree
 from rich.text import Text
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.live import Live
 
 from bioinfoflow.core.config import Config
 from bioinfoflow.core.workflow import Workflow
@@ -159,11 +163,102 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
         else:
             console.print(f"Using default time limit of [bold]{default_time_limit}[/] for steps without a specified limit")
         
-        success = executor.execute(
-            max_parallel=parallel,
-            enable_time_limits=enable_time_limits,
-            default_time_limit=default_time_limit
-        )
+        # Get execution order to track progress
+        execution_order = workflow.get_execution_order()
+        total_steps = len(execution_order)
+        
+        # Create a progress display
+        console.print(f"\n[bold]Executing workflow[/] [cyan]{workflow.name}[/] [green]v{workflow.version}[/] with [bold]{total_steps}[/] steps")
+        
+        # Create a progress context with multiple progress bars
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(bar_width=40),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            console=console,
+            expand=True
+        ) as progress:
+            # Create overall progress bar
+            overall_task = progress.add_task(f"[cyan]Overall progress[/]", total=total_steps)
+            
+            # Dictionary to store task IDs for each step
+            step_tasks = {}
+            
+            # Create a task for each step (initially hidden)
+            for step_name in execution_order:
+                step_task = progress.add_task(f"[yellow]{step_name}[/]", total=100, visible=False)
+                step_tasks[step_name] = step_task
+            
+            # Create a stop event for the progress monitoring thread
+            stop_event = Event()
+            
+            # Function to monitor step status and update progress
+            def monitor_progress():
+                completed_steps = 0
+                step_statuses = {}
+                
+                while not stop_event.is_set():
+                    # Get current run info
+                    run_info = executor.get_run_info()
+                    
+                    if 'steps' in run_info and run_info['steps']:
+                        # Update step progress
+                        for step_name, step_info in run_info['steps'].items():
+                            if step_name not in step_tasks:
+                                continue
+                                
+                            status = step_info.get('status', 'unknown')
+                            
+                            # Only update if status has changed
+                            if step_name not in step_statuses or step_statuses[step_name] != status:
+                                step_statuses[step_name] = status
+                                
+                                if status == StepStatus.PENDING.value:
+                                    # Make the step visible when it becomes pending
+                                    progress.update(step_tasks[step_name], visible=True, completed=0)
+                                elif status == StepStatus.RUNNING.value:
+                                    # Just ensure it's visible and not complete
+                                    progress.update(step_tasks[step_name], visible=True, completed=50)
+                                elif status in [StepStatus.COMPLETED.value, StepStatus.FAILED.value, 
+                                              StepStatus.ERROR.value, StepStatus.TERMINATED_TIME_LIMIT.value,
+                                              StepStatus.SKIPPED.value]:
+                                    # Step is done (success or failure), mark as complete
+                                    progress.update(step_tasks[step_name], completed=100)
+                                    
+                        # Update the overall progress
+                        new_completed_steps = sum(1 for s, info in run_info['steps'].items() 
+                                               if info.get('status') in [StepStatus.COMPLETED.value, 
+                                                                        StepStatus.FAILED.value,
+                                                                        StepStatus.ERROR.value, 
+                                                                        StepStatus.TERMINATED_TIME_LIMIT.value,
+                                                                        StepStatus.SKIPPED.value])
+                        
+                        if new_completed_steps != completed_steps:
+                            completed_steps = new_completed_steps
+                            progress.update(overall_task, completed=completed_steps)
+                    
+                    # Sleep briefly to avoid excessive CPU usage
+                    time.sleep(0.5)
+            
+            # Start the progress monitoring thread
+            monitor_thread = Thread(target=monitor_progress)
+            monitor_thread.daemon = True
+            monitor_thread.start()
+            
+            try:
+                # Execute the workflow
+                success = executor.execute(
+                    max_parallel=parallel,
+                    enable_time_limits=enable_time_limits,
+                    default_time_limit=default_time_limit
+                )
+            finally:
+                # Stop the progress monitoring thread
+                stop_event.set()
+                monitor_thread.join(timeout=1.0)
         
         # Get run info
         run_info = executor.get_run_info()
@@ -225,7 +320,7 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
         
     except Exception as e:
         logger.error(f"Error running workflow: {str(e)}")
-        console.print(f"[bold red]Error:[/] {str(e)}", err=True)
+        console.print(f"[bold red]Error:[/] {str(e)}")
         sys.exit(1)
 
 
