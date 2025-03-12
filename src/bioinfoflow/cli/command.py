@@ -10,6 +10,10 @@ from typing import Dict, Optional, Any
 
 import click
 from loguru import logger
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.tree import Tree
 
 from bioinfoflow.core.config import Config
 from bioinfoflow.core.workflow import Workflow
@@ -77,19 +81,53 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
         workflow = Workflow(workflow_file)
         
         if dry_run:
-            click.echo("\nDry run - workflow validation:")
-            click.echo(f"  Name: {workflow.name}")
-            click.echo(f"  Version: {workflow.version}")
-            click.echo(f"  Description: {workflow.description}")
-            click.echo(f"  Steps: {len(workflow.steps)}")
-            click.echo("\nStep execution order:")
+            console = Console()
+            
+            # Create workflow info panel
+            workflow_info = Panel(
+                f"[bold cyan]Name:[/] {workflow.name}\n"
+                f"[bold cyan]Version:[/] {workflow.version}\n"
+                f"[bold cyan]Description:[/] {workflow.description}\n"
+                f"[bold cyan]Steps:[/] {len(workflow.steps)}",
+                title="[bold]Workflow Information[/]",
+                border_style="blue"
+            )
+            console.print("\n[bold]Dry run - workflow validation:[/]")
+            console.print(workflow_info)
+            
+            # Create step execution table
+            table = Table(title="Step Execution Order", show_header=True, header_style="bold magenta")
+            table.add_column("#", style="dim", width=4)
+            table.add_column("Step Name", style="cyan")
+            table.add_column("Container", style="green")
+            table.add_column("Dependencies", style="yellow")
+            table.add_column("Time Limit", style="red")
+            
             for i, step_name in enumerate(workflow.get_execution_order(), 1):
                 step = workflow.steps[step_name]
-                click.echo(f"  {i}. {step_name} (container: {step.container})")
-                click.echo(f"     Command: {step.command}")
-                click.echo(f"     Dependencies: {step.after or 'None'}")
-                if "time_limit" in step.resources:
-                    click.echo(f"     Time limit: {step.resources['time_limit']}")
+                time_limit = step.resources.get("time_limit", "Not set")
+                dependencies = ", ".join(step.after) if step.after else "None"
+                
+                table.add_row(
+                    str(i),
+                    step_name,
+                    step.container,
+                    dependencies,
+                    time_limit
+                )
+            
+            console.print(table)
+            
+            # Create command details tree
+            console.print("\n[bold]Command Details:[/]")
+            tree = Tree("[bold]Steps[/]")
+            
+            for step_name in workflow.get_execution_order():
+                step = workflow.steps[step_name]
+                step_node = tree.add(f"[cyan]{step_name}[/]")
+                step_node.add(f"[yellow]Command:[/] {step.command}")
+            
+            console.print(tree)
             return
         
         # Create executor

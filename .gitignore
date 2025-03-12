@@ -59,4 +59,4 @@ Desktop.ini
 *.log
 archive/
 examples/runs/
-examples/bioinfoflow.db
+*.db
