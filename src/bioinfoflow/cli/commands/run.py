@@ -171,7 +171,7 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
                                               StepStatus.ERROR.value, StepStatus.TERMINATED_TIME_LIMIT.value,
                                               StepStatus.SKIPPED.value]:
                                     # Step is done (success or failure), mark as complete
-                                    progress.update(step_tasks[step_name], completed=100)
+                                    progress.update(step_tasks[step_name], visible=True, completed=100)
                                     
                         # Update the overall progress
                         new_completed_steps = sum(1 for s, info in run_info['steps'].items() 
@@ -186,7 +186,7 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
                             progress.update(overall_task, completed=completed_steps)
                     
                     # Sleep briefly to avoid excessive CPU usage
-                    time.sleep(0.5)
+                    time.sleep(0.1)
             
             # Start the progress monitoring thread
             monitor_thread = Thread(target=monitor_progress)
@@ -200,6 +200,18 @@ def run(workflow_file: str, input: tuple, dry_run: bool, parallel: int, disable_
                     enable_time_limits=enable_time_limits,
                     default_time_limit=default_time_limit
                 )
+                
+                # Ensure all progress bars are updated to 100% when workflow is complete
+                if success:
+                    # Update all step tasks to 100%
+                    for step_name in execution_order:
+                        progress.update(step_tasks[step_name], visible=True, completed=100)
+                    # Update overall progress to 100%
+                    progress.update(overall_task, completed=total_steps)
+                    
+                # Give the progress bars a moment to render
+                time.sleep(0.5)
+                
             finally:
                 # Stop the progress monitoring thread
                 stop_event.set()
