@@ -8,15 +8,12 @@ import sys
 from typing import Optional
 from loguru import logger
 
-from bioinfoflow.cli.command import cli
+# Import our CLI
+from bioinfoflow.cli.cli_core import cli, has_database
 
 # Try to import database modules
-try:
+if has_database:
     from bioinfoflow.db.config import db_config
-    has_database = True
-except ImportError:
-    has_database = False
-    logger.warning("Database module not available, database functionality disabled")
 
 
 def main(args: Optional[list] = None) -> int:

@@ -22,4 +22,4 @@ warnings.warn(
 )
 
 # Import from the new location for backwards compatibility
-from bioinfoflow.cli.cli_core import cli 
+from bioinfoflow.cli import cli 
