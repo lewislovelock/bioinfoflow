@@ -818,5 +818,60 @@ def list_steps(run_id: str):
         sys.exit(1)
 
 
+@cli.command()
+@click.option('--host', default="127.0.0.1", help='Host to bind the API server to')
+@click.option('--port', default=8000, type=int, help='Port to bind the API server to')
+@click.option('--reload', is_flag=True, help='Enable auto-reload for development')
+def serve(host: str, port: int, reload: bool):
+    """Start the BioinfoFlow API server."""
+    try:
+        # Import uvicorn
+        import uvicorn
+    except ImportError:
+        console.print("[bold red]Error:[/] uvicorn is required to run the API server")
+        console.print("Install it with: [bold]pip install uvicorn[standard][/]")
+        sys.exit(1)
+    
+    # Import FastAPI app
+    try:
+        from bioinfoflow.api import app
+    except ImportError:
+        console.print("[bold red]Error:[/] FastAPI is required to run the API server")
+        console.print("Install it with: [bold]pip install fastapi[/]")
+        sys.exit(1)
+    
+    # Check if database is available
+    try:
+        from bioinfoflow.db.config import db_config
+        # Create tables if they don't exist
+        db_config.create_tables()
+        console.print("[bold green]Database initialized successfully.[/]")
+    except ImportError:
+        console.print("[bold yellow]Warning:[/] Database module not available")
+        console.print("Some API features may not work correctly")
+    except Exception as e:
+        console.print(f"[bold yellow]Warning:[/] Failed to initialize database: {e}")
+        console.print("Some API features may not work correctly")
+    
+    # Print information
+    console.print(f"\n[bold]Starting BioinfoFlow API server[/]")
+    console.print(f"API documentation will be available at: [bold cyan]http://{host}:{port}/api/docs[/]")
+    
+    # Start uvicorn server
+    console.print(f"\n[bold green]Server starting...[/]")
+    
+    try:
+        uvicorn.run(
+            "bioinfoflow.api:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="info"
+        )
+    except Exception as e:
+        console.print(f"[bold red]Error starting server:[/] {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli() 

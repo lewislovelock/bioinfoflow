@@ -7,4 +7,7 @@ rich>=13.9.4,<14.0.0
 # Database dependencies
 sqlalchemy>=2.0.38,<3.0.0
 psycopg2-binary>=2.9.10,<3.0.0
-alembic>=1.15.1,<2.0.0 
+alembic>=1.15.1,<2.0.0
+# API dependencies
+fastapi>=0.115.11,<0.116.0
+uvicorn[standard]>=0.34.0,<0.35.0 
