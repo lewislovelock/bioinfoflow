@@ -24,7 +24,7 @@ class Workflow(Base):
     version = Column(String(50), nullable=False)
     description = Column(Text, nullable=True)
     yaml_content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(datetime.timezone.utc))
     
     # Relationships
     runs = relationship("Run", back_populates="workflow", cascade="all, delete-orphan")
