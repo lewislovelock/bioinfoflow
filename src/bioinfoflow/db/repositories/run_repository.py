@@ -54,7 +54,7 @@ class RunRepository:
             status=status,
             run_dir=run_dir,
             inputs=inputs,
-            start_time=datetime.now(datetime.timezone.utc)
+            start_time=datetime.utcnow()
         )
         
         try:
@@ -134,7 +134,7 @@ class RunRepository:
         
         # Set end time automatically for terminal states
         if status in ["COMPLETED", "FAILED"] and not run.end_time:
-            run.end_time = end_time or datetime.now(datetime.timezone.utc)
+            run.end_time = end_time or datetime.utcnow()
         
         try:
             self.session.commit()

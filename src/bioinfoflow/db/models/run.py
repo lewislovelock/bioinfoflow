@@ -23,7 +23,7 @@ class Run(Base):
     workflow_id = Column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
     run_id = Column(String(50), unique=True, nullable=False)
     status = Column(String(20), nullable=False)
-    start_time = Column(DateTime, nullable=False, default=datetime.now(datetime.timezone.utc))
+    start_time = Column(DateTime, nullable=False, default=datetime.utcnow())
     end_time = Column(DateTime, nullable=True)
     run_dir = Column(Text, nullable=False)
     inputs = Column(JSON, nullable=True)

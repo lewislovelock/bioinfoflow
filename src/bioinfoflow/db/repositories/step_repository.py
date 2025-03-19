@@ -135,11 +135,11 @@ class StepRepository:
         
         # Set start time for "RUNNING" status
         if status == "RUNNING" and not step.start_time:
-            step.start_time = start_time or datetime.now(datetime.timezone.utc)
+            step.start_time = start_time or datetime.utcnow()
         
         # Set end time for terminal states
         if status in ["COMPLETED", "FAILED", "TERMINATED_TIME_LIMIT"] and not step.end_time:
-            step.end_time = end_time or datetime.now(datetime.timezone.utc)
+            step.end_time = end_time or datetime.utcnow()
         
         try:
             self.session.commit()
