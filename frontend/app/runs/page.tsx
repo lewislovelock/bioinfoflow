@@ -5,25 +5,45 @@ import { useRuns } from "@/lib/api/hooks";
 import Link from "next/link";
 import { formatDistanceToNow } from 'date-fns';
 import { Status } from "@/types/api";
+import { Play, Plus, Search, ExternalLink, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-// Helper function to get appropriate status badge color
-const getStatusBadgeColor = (status: string) => {
+// Helper function to get appropriate status badge variant
+const getStatusBadgeVariant = (status: string): "default" | "destructive" | "outline" | "secondary" | "success" | "warning" => {
   switch (status) {
     case Status.COMPLETED:
-      return 'bg-green-100 text-green-800';
+      return 'success';
     case Status.RUNNING:
-      return 'bg-blue-100 text-blue-800';
+      return 'default';
     case Status.PENDING:
-      return 'bg-yellow-100 text-yellow-800';
+      return 'secondary';
     case Status.FAILED:
     case Status.ERROR:
-      return 'bg-red-100 text-red-800';
+      return 'destructive';
     case Status.TERMINATED_TIME_LIMIT:
-      return 'bg-orange-100 text-orange-800';
+      return 'warning';
     case Status.SKIPPED:
-      return 'bg-gray-100 text-gray-800';
+      return 'outline';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'outline';
   }
 };
 
@@ -32,82 +52,119 @@ export default function RunsPage() {
 
   return (
     <AppLayout>
-      <div className="py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Workflow Runs</h1>
+      <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Workflow Runs</h1>
+            <p className="text-muted-foreground">
+              Monitor and manage your workflow executions
+            </p>
+          </div>
+          <Button asChild>
+            <Link href="/workflows">
+              <Play className="mr-2 h-4 w-4" />
+              Run a Workflow
+            </Link>
+          </Button>
+        </div>
 
-          <div className="mt-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>All Runs</CardTitle>
+            <CardDescription>
+              View the status and details of all workflow executions
+            </CardDescription>
+            <div className="flex items-center gap-2 pt-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search runs..."
+                  className="pl-8"
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
             {isLoading ? (
-              <div className="text-center py-10">
-                <p className="text-gray-500">Loading runs...</p>
+              <div className="flex h-[200px] items-center justify-center">
+                <p className="text-muted-foreground">Loading runs...</p>
               </div>
             ) : error ? (
-              <div className="bg-red-50 p-4 rounded-md">
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4">
                 <p className="text-red-700">Error loading runs: {error.toString()}</p>
               </div>
             ) : runs?.length === 0 ? (
-              <div className="bg-white shadow overflow-hidden sm:rounded-md p-6 text-center">
-                <p className="text-gray-500 mb-4">No workflow runs found</p>
-                <Link
-                  href="/workflows"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
-                >
-                  Go to workflows
-                </Link>
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+                <div className="rounded-full bg-primary/10 p-3">
+                  <Play className="h-6 w-6 text-primary" />
+                </div>
+                <h2 className="mt-4 text-xl font-semibold">No workflow runs found</h2>
+                <p className="mb-4 mt-2 text-center text-muted-foreground">
+                  Start by running one of your workflows
+                </p>
+                <Button asChild>
+                  <Link href="/workflows">
+                    <Play className="mr-2 h-4 w-4" />
+                    Go to Workflows
+                  </Link>
+                </Button>
               </div>
             ) : (
-              <div className="bg-white shadow overflow-hidden sm:rounded-md">
-                <ul className="divide-y divide-gray-200">
-                  {runs?.map((run) => (
-                    <li key={run.id}>
-                      <Link href={`/runs/${run.id}`} className="block hover:bg-gray-50">
-                        <div className="px-4 py-4 sm:px-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                              <p className="text-lg font-medium text-blue-600 truncate">
-                                {run.workflow_name}
-                              </p>
-                              <div className="ml-2 flex-shrink-0 flex">
-                                <p className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                  v{run.workflow_version}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="ml-2 flex-shrink-0 flex">
-                              <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeColor(run.status)}`}>
-                                {run.status}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="mt-2 sm:flex sm:justify-between">
-                            <div className="sm:flex">
-                              <p className="flex items-center text-sm text-gray-500">
-                                Run ID: {run.run_id}
-                              </p>
-                            </div>
-                            <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                              <p>
-                                Started{' '}
-                                {formatDistanceToNow(new Date(run.start_time), {
-                                  addSuffix: true,
-                                })}
-                              </p>
-                              {run.duration && (
-                                <p className="ml-4">
-                                  Duration: {run.duration}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+              <div className="relative w-full overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Workflow</TableHead>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Run ID</TableHead>
+                      <TableHead>Started</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead className="w-[80px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {runs?.map((run) => (
+                      <TableRow key={run.id}>
+                        <TableCell className="font-medium">
+                          {run.workflow_name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">v{run.workflow_version}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusBadgeVariant(run.status)}>
+                            {run.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {run.run_id}
+                        </TableCell>
+                        <TableCell>
+                          {formatDistanceToNow(new Date(run.start_time), {
+                            addSuffix: true,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          {run.duration || '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" asChild>
+                            <Link href={`/runs/${run.id}`}>
+                              <ExternalLink className="h-4 w-4" />
+                              <span className="sr-only">View</span>
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );

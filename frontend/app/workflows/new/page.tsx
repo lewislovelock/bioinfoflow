@@ -5,6 +5,14 @@ import { useCreateWorkflow } from "@/lib/api/hooks";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ChangeEvent, FormEvent } from "react";
 
 export default function CreateWorkflowPage() {
   const router = useRouter();
@@ -16,7 +24,7 @@ export default function CreateWorkflowPage() {
 
   const createWorkflowMutation = useCreateWorkflow();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError(null);
 
@@ -53,130 +61,106 @@ export default function CreateWorkflowPage() {
 
   return (
     <AppLayout>
-      <div className="py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="md:flex md:items-center md:justify-between">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-                Create New Workflow
-              </h2>
+      <div className="flex flex-col gap-8">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => router.push('/workflows')}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <h1 className="text-3xl font-bold tracking-tight">Create Workflow</h1>
             </div>
-            <div className="mt-4 flex md:mt-0 md:ml-4">
-              <Link
-                href="/workflows"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Cancel
-              </Link>
-            </div>
-          </div>
-
-          <div className="mt-6 bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
-            {formError && (
-              <div className="mb-4 bg-red-50 p-4 rounded-md">
-                <p className="text-red-700">{formError}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                  <div className="sm:col-span-3">
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                      Workflow Name
-                    </label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        name="name"
-                        id="name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        placeholder="e.g., DNA Alignment Pipeline"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label htmlFor="version" className="block text-sm font-medium text-gray-700">
-                      Version
-                    </label>
-                    <div className="mt-1">
-                      <input
-                        type="text"
-                        name="version"
-                        id="version"
-                        value={version}
-                        onChange={(e) => setVersion(e.target.value)}
-                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        placeholder="e.g., 1.0.0"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-6">
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                      Description
-                    </label>
-                    <div className="mt-1">
-                      <textarea
-                        id="description"
-                        name="description"
-                        rows={3}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border border-gray-300 rounded-md"
-                        placeholder="Describe what this workflow does..."
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-gray-500">
-                      Brief description of the workflow purpose and functionality.
-                    </p>
-                  </div>
-
-                  <div className="sm:col-span-6">
-                    <label htmlFor="yaml-content" className="block text-sm font-medium text-gray-700">
-                      Workflow YAML
-                    </label>
-                    <div className="mt-1">
-                      <textarea
-                        id="yaml-content"
-                        name="yaml-content"
-                        rows={12}
-                        value={yamlContent}
-                        onChange={(e) => setYamlContent(e.target.value)}
-                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border border-gray-300 rounded-md font-mono"
-                        placeholder="Paste your workflow YAML here..."
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-gray-500">
-                      Paste your workflow YAML definition here. The YAML should define the workflow steps,
-                      their dependencies, container images, and commands.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => router.push('/workflows')}
-                    className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={createWorkflowMutation.isPending}
-                    className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    {createWorkflowMutation.isPending ? 'Creating...' : 'Create Workflow'}
-                  </button>
-                </div>
-              </div>
-            </form>
+            <p className="text-muted-foreground">
+              Define a new bioinformatics workflow pipeline
+            </p>
           </div>
         </div>
+
+        {formError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>
+              {formError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Workflow Information</CardTitle>
+              <CardDescription>
+                Provide basic information about your workflow
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Workflow Name</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+                    placeholder="e.g., RNA-Seq Analysis Pipeline"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="version">Version</Label>
+                  <Input
+                    id="version"
+                    value={version}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setVersion(e.target.value)}
+                    placeholder="e.g., 1.0.0"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+                  placeholder="Describe what this workflow does..."
+                  rows={3}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Provide a clear description of the workflow's purpose and functionality.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="yaml-content">Workflow YAML Definition</Label>
+                <Textarea
+                  id="yaml-content"
+                  value={yamlContent}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setYamlContent(e.target.value)}
+                  placeholder="Paste your workflow YAML here..."
+                  className="font-mono h-[300px]"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Paste your workflow YAML definition. This should define the workflow steps,
+                  their dependencies, container images, and commands.
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => router.push('/workflows')}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={createWorkflowMutation.isPending}
+              >
+                {createWorkflowMutation.isPending ? 'Creating...' : 'Create Workflow'}
+              </Button>
+            </CardFooter>
+          </Card>
+        </form>
       </div>
     </AppLayout>
   );

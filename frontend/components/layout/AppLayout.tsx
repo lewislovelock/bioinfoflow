@@ -1,7 +1,9 @@
 'use client';
 
-import { Navbar } from './Navbar';
 import { ReactNode } from 'react';
+import { Navbar } from './Navbar';
+import { Sidebar } from './Sidebar';
+import { Toaster } from '@/components/ui/sonner';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -9,18 +11,22 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {children}
-      </main>
-      <footer className="bg-white border-t border-gray-200 py-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-gray-500">
-            BioinfoFlow &copy; {new Date().getFullYear()}
-          </p>
+    <div className="min-h-screen bg-background">
+      <Toaster />
+      <div className="flex min-h-screen flex-col">
+        <Navbar />
+        <div className="flex flex-1">
+          <Sidebar />
+          <main className="flex-1 p-6 md:p-8">
+            {children}
+          </main>
         </div>
-      </footer>
+        <footer className="border-t py-4">
+          <div className="container flex items-center justify-center text-center text-sm text-muted-foreground">
+            BioinfoFlow &copy; {new Date().getFullYear()} - Scientific Workflow Management for Bioinformatics
+          </div>
+        </footer>
+      </div>
     </div>
   );
 } 
