@@ -6,6 +6,7 @@ providing a structured representation of a workflow.
 """
 import os
 import yaml
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 import shutil
@@ -50,6 +51,32 @@ class Workflow:
         # Parse the YAML file
         self._parse_yaml()
         logger.info(f"Loaded workflow '{self.name}' v{self.version}")
+    
+    @classmethod
+    def from_dict(cls, workflow_dict: Dict[str, Any]) -> 'Workflow':
+        """
+        Create a Workflow instance from a dictionary.
+        
+        Args:
+            workflow_dict: Dictionary representation of a workflow
+            
+        Returns:
+            Workflow instance
+            
+        Raises:
+            ValueError: If the dictionary is invalid
+        """
+        # Create a temporary YAML file with the dictionary content
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+            yaml.dump(workflow_dict, tmp)
+            tmp_path = tmp.name
+        
+        try:
+            # Create workflow from the temporary file
+            return cls(tmp_path)
+        finally:
+            # Clean up the temporary file
+            Path(tmp_path).unlink(missing_ok=True)
     
     def _parse_yaml(self) -> None:
         """

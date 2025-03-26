@@ -91,8 +91,16 @@ async def get_workflow(
     
     # Parse YAML content to get step information
     try:
+        # Parse YAML content
         workflow_dict = yaml.safe_load(db_workflow.yaml_content)
-        core_workflow = Workflow.from_dict(workflow_dict)
+        if not workflow_dict:
+            raise ValueError("Empty or invalid YAML content")
+            
+        # Create core workflow object
+        try:
+            core_workflow = Workflow.from_dict(workflow_dict)
+        except Exception as e:
+            raise ValueError(f"Failed to create workflow from dictionary: {str(e)}")
         
         # Create detail model
         return WorkflowDetail.from_core_workflow(
@@ -101,6 +109,8 @@ async def get_workflow(
             db_workflow.created_at
         )
     except Exception as e:
+        from loguru import logger
+        logger.error(f"Error parsing workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to parse workflow: {str(e)}"
