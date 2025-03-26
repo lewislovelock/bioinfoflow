@@ -115,10 +115,10 @@ export default function RunsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Run ID</TableHead>
                       <TableHead>Workflow</TableHead>
                       <TableHead>Version</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Run ID</TableHead>
                       <TableHead>Started</TableHead>
                       <TableHead>Duration</TableHead>
                       <TableHead className="w-[80px]"></TableHead>
@@ -127,6 +127,9 @@ export default function RunsPage() {
                   <TableBody>
                     {runs?.map((run) => (
                       <TableRow key={run.id}>
+                        <TableCell className="font-mono text-muted-foreground">
+                          {run.run_id}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {run.workflow_name}
                         </TableCell>
@@ -134,12 +137,9 @@ export default function RunsPage() {
                           <Badge variant="outline">v{run.workflow_version}</Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getStatusBadgeVariant(run.status)}>
+                          <Badge variant={getStatusBadgeVariant(run.status) as "default" | "destructive" | "outline" | "secondary"}>
                             {run.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {run.run_id}
                         </TableCell>
                         <TableCell>
                           {formatDistanceToNow(new Date(run.start_time), {

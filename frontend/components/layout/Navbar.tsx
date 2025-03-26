@@ -51,7 +51,7 @@ export function Navbar() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full">
               <Avatar className="h-8 w-8">
-                <AvatarFallback>RU</AvatarFallback>
+                <AvatarFallback>Bio</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
