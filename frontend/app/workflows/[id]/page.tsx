@@ -2,19 +2,20 @@
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useWorkflow, useRunWorkflow } from "@/lib/api/hooks";
-import { useState } from "react";
+import { useState, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 
 interface WorkflowDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function WorkflowDetailPage({ params }: WorkflowDetailPageProps) {
-  const workflowId = parseInt(params.id, 10);
+  const unwrappedParams = use(params);
+  const workflowId = parseInt(unwrappedParams.id, 10);
   const router = useRouter();
   const [isRunModalOpen, setIsRunModalOpen] = useState(false);
   const [inputs, setInputs] = useState<Record<string, string>>({});

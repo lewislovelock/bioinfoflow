@@ -5,7 +5,7 @@ import { useRun, useRunLogs, useCancelRun, useResumeRun } from "@/lib/api/hooks"
 import { Status } from "@/types/api";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { useState } from "react";
+import { useState, use } from "react";
 
 // Helper function to get appropriate status badge color
 const getStatusBadgeColor = (status: string) => {
@@ -29,13 +29,14 @@ const getStatusBadgeColor = (status: string) => {
 };
 
 interface RunDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function RunDetailPage({ params }: RunDetailPageProps) {
-  const runId = parseInt(params.id, 10);
+  const unwrappedParams = use(params);
+  const runId = unwrappedParams.id;
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
 
   const { data: run, isLoading, error } = useRun(runId);

@@ -111,9 +111,10 @@ export const apiClient = {
     },
 
     // Get a specific run by ID
-    getById: async (id: number): Promise<RunDetail> => {
+    getById: async (id: string | number): Promise<RunDetail> => {
       try {
-        const response = await axiosInstance.get<RunDetail>(`${API_PREFIX}/runs/${id}`);
+        const runId = typeof id === 'number' ? `run-${id}` : id;
+        const response = await axiosInstance.get<RunDetail>(`${API_PREFIX}/runs/${runId}`);
         return response.data;
       } catch (error) {
         return handleApiError(error);
@@ -121,9 +122,10 @@ export const apiClient = {
     },
 
     // Resume a run
-    resume: async (id: number, params: RunResumeRequest): Promise<RunDetail> => {
+    resume: async (id: string | number, params: RunResumeRequest): Promise<RunDetail> => {
       try {
-        const response = await axiosInstance.post<RunDetail>(`${API_PREFIX}/runs/${id}/resume`, params);
+        const runId = typeof id === 'number' ? `run-${id}` : id;
+        const response = await axiosInstance.post<RunDetail>(`${API_PREFIX}/runs/${runId}/resume`, params);
         return response.data;
       } catch (error) {
         return handleApiError(error);
@@ -131,9 +133,10 @@ export const apiClient = {
     },
 
     // Cancel a run
-    cancel: async (id: number): Promise<RunDetail> => {
+    cancel: async (id: string | number): Promise<RunDetail> => {
       try {
-        const response = await axiosInstance.post<RunDetail>(`${API_PREFIX}/runs/${id}/cancel`);
+        const runId = typeof id === 'number' ? `run-${id}` : id;
+        const response = await axiosInstance.post<RunDetail>(`${API_PREFIX}/runs/${runId}/cancel`);
         return response.data;
       } catch (error) {
         return handleApiError(error);
@@ -141,9 +144,10 @@ export const apiClient = {
     },
 
     // Get run logs
-    getLogs: async (id: number, stepName: string): Promise<string> => {
+    getLogs: async (id: string | number, stepName: string): Promise<string> => {
       try {
-        const response = await axiosInstance.get<string>(`${API_PREFIX}/runs/${id}/logs/${stepName}`);
+        const runId = typeof id === 'number' ? `run-${id}` : id;
+        const response = await axiosInstance.get<string>(`${API_PREFIX}/runs/${runId}/logs/${stepName}`);
         return response.data;
       } catch (error) {
         return handleApiError(error);

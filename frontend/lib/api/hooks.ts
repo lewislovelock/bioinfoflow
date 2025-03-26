@@ -17,8 +17,8 @@ export const queryKeys = {
   },
   runs: {
     all: ['runs'],
-    detail: (id: number) => ['runs', id],
-    logs: (id: number, stepName: string) => ['runs', id, 'logs', stepName],
+    detail: (id: string | number) => ['runs', id],
+    logs: (id: string | number, stepName: string) => ['runs', id, 'logs', stepName],
   },
 };
 
@@ -95,7 +95,7 @@ export function useRuns() {
   });
 }
 
-export function useRun(id: number) {
+export function useRun(id: string | number) {
   return useQuery({
     queryKey: queryKeys.runs.detail(id),
     queryFn: () => apiClient.runs.getById(id),
@@ -103,7 +103,7 @@ export function useRun(id: number) {
   });
 }
 
-export function useRunLogs(id: number, stepName: string) {
+export function useRunLogs(id: string | number, stepName: string) {
   return useQuery({
     queryKey: queryKeys.runs.logs(id, stepName),
     queryFn: () => apiClient.runs.getLogs(id, stepName),
@@ -119,12 +119,12 @@ export function useResumeRun() {
       runId, 
       params 
     }: { 
-      runId: number; 
+      runId: string | number; 
       params: RunResumeRequest 
     }) => apiClient.runs.resume(runId, params),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.runs.detail(data.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runs.detail(data.run_id) });
     },
   });
 }
@@ -133,10 +133,10 @@ export function useCancelRun() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (runId: number) => apiClient.runs.cancel(runId),
+    mutationFn: (runId: string | number) => apiClient.runs.cancel(runId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.runs.detail(data.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runs.detail(data.run_id) });
     },
   });
 } 

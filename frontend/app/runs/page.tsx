@@ -151,7 +151,7 @@ export default function RunsPage() {
                         </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="icon" asChild>
-                            <Link href={`/runs/${run.id}`}>
+                            <Link href={`/runs/${run.run_id}`}>
                               <ExternalLink className="h-4 w-4" />
                               <span className="sr-only">View</span>
                             </Link>
